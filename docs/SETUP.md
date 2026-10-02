@@ -47,9 +47,15 @@ The committed seeds in `seeds/` are ready to use. Generation does not rebuild se
 5. **Install the Snowflake group:** `uv sync --group snowflake`.
 6. **Check the plan without connecting:** `uv run --group snowflake python scripts/snowflake_load.py --dry-run` lists each `SEATS_TO_CASH.RAW_<SOURCE>.<TABLE>` it will replace.
 7. **Run `make snowflake`.** The loader creates the `RAW_*` schemas and replaces each raw table, with upper-case names and logical types. dbt then builds seeds, staging, intermediate, marts, and audits into the `STAGING`, `INTERMEDIATE`, `MARTS`, `AUDIT`, and `SEEDS` schemas, and runs every test.
-8. **Suspend the warehouse** afterwards: `alter warehouse TRANSFORMING suspend;`.
+8. **Post the closes on Snowflake:** `make close-history TARGET=snowflake`. For each period from 2026-04 to 2026-09, it:
+   - builds the close metrics as of the close date into the `ASOF_*` schemas;
+   - appends them to `FINANCE_CLOSE.CLOSE_LEDGER` in the same database.
 
-Raw schemas live in the same database as the dbt schemas (ADR-021). The dashboard queries in `analyses/dashboard/` are written in Snowflake syntax against the `MARTS` and `AUDIT` schemas.
+   It then reruns `dbt build --target snowflake`, so `MARTS.FCT_CLOSE_LEDGER` and `MARTS.FCT_RESTATEMENTS` are populated. It reads `.env` the same way `make snowflake` does. A period already in the ledger is refused; add `FORCE=1` to replace posted closes. `make close PERIOD=2026-09 TARGET=snowflake` posts one period, then `make snowflake` or `dbt build --target snowflake` refreshes the restatements.
+9. **Compile the dashboard queries:** `make dashboard-snowflake` compiles `analyses/dashboard/*.sql` for the Snowflake target without connecting and prints each compiled file's path under `target/snowflake/compiled/`. The files reference `<SNOWFLAKE_DATABASE>.marts` and `.audit`, so paste them into a Snowsight worksheet or a BI tool.
+10. **Suspend the warehouse** afterwards: `alter warehouse TRANSFORMING suspend;`.
+
+Raw schemas, the close ledger, and the dbt schemas share one database (ADR-021, ADR-025). The dashboard queries in `analyses/dashboard/` are written in Snowflake syntax against the `MARTS` and `AUDIT` schemas.
 
 ## Salesforce enterprise sync
 
@@ -57,8 +63,18 @@ Create a Salesforce Developer Edition org. Add Account fields `Tailnet_ID__c` (u
 
 ## Hightouch
 
-Connect Hightouch to Snowflake with a read-only service user and connect Salesforce through OAuth. Configure one manual upsert to Account using `Tailnet_ID__c` as the match key and `fct_account_signals` as the model. Map ARR, held seats, seat utilization, migration risk tier, and sync eligibility. Limit syncs to eligible accounts.
+Connect Hightouch to Snowflake with a read-only service user and connect Salesforce through OAuth. Configure one upsert to Account using `Tailnet_ID__c` as the match key and `MARTS.FCT_ACCOUNT_SIGNALS` as the model. Map the fields:
+
+- `account_name` → `Name`, required when Hightouch creates an account that does not exist yet (a fresh Developer org has none);
+- `tailnet_id` → `Tailnet_ID__c`;
+- `arr_usd` → `ARR__c`;
+- `seats_held` → `Seats_Held__c`;
+- `seat_utilization` → `Seat_Utilization__c`;
+- `migration_risk_tier` → `Migration_Risk_Tier__c`;
+- `sync_eligible` → `Sync_Eligible__c`.
+
+Filter the model to `sync_eligible = true`.
 
 ## Finance Google Sheet and Fivetran
 
-The generator will write `data/raw/finance/manual_adjustments.csv` (PLAN task b). Import it into a Google Sheet with a header row and named range. Configure Fivetran Google Sheets to load that range into Snowflake `raw_finance.manual_adjustments`. DuckDB continues to load the local CSV.
+The manual-adjustments sheet is not generated: PLAN item 9 was skipped. If it is added, it will be a CSV imported into a Google Sheet with a header row and a named range, which Fivetran Google Sheets loads into Snowflake `raw_finance.manual_adjustments`.

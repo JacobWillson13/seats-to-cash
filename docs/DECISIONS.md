@@ -176,7 +176,7 @@ Status: Accepted
   - `high`: uplift above `migration_high_uplift` (0.40, the same threshold as the config), or no legacy MRR to compare.
   - `medium`: uplift above `migration_medium_uplift` (0.10).
   - `low`: otherwise.
-- **Account signals:** `fct_account_signals` has one row per Salesforce account with a tailnet, giving current ARR, seats held and occupied, utilization (occupied ÷ held on seat plans), and the migration tier (`none` off v3). A row is `sync_eligible` when the tailnet pays now and is not internal; Hightouch syncs only those rows.
+- **Account signals:** `fct_account_signals` has one row per Salesforce account with a tailnet, giving the account name (Hightouch needs it to create an account), current ARR, seats held and occupied, utilization (occupied ÷ held on seat plans), and the migration tier (`none` off v3). A row is `sync_eligible` when the tailnet pays now and is not internal; Hightouch syncs only those rows.
 
 ## ADR-023: As-of closes, the ledger, and restatements
 
@@ -195,6 +195,16 @@ Status: Accepted
 Status: Accepted
 
 The simulation logs each user's first active day per month. In the month a trial converts to a v3 plan, it also logs each user's first activity after the conversion. The month's v3 usage line then starts on the subscription start and counts only users with a logged active day on or after it. The answer key, the Orb usage events, and dbt (which reads the line) all use that count. Before this, the conversion month's line covered the whole calendar month and billed trial-period activity. `month_mau`, which drives payment-failure exposure, is unchanged.
+
+## ADR-025: Closes run on either warehouse
+
+Status: Accepted
+
+`scripts/close.py` writes the ledger through one DB-API connection for either target. On DuckDB that is `data/seats_to_cash.duckdb`. On Snowflake it reads `.env` and uses the same key pair as `make snowflake`, connected to the target database.
+
+The as-of build runs `dbt build --target <target>`, so on Snowflake the `ASOF_*` schemas and `FINANCE_CLOSE.CLOSE_LEDGER` sit in the same database as the marts. The dbt `on-run-start` hook creates the ledger table on both warehouses. The close logic, the refusal without `FORCE=1`, and the 14 metrics are identical on both. `make close` and `make close-history` choose with `TARGET=duckdb|snowflake`, and the DuckDB default is unchanged.
+
+`make dashboard-snowflake` compiles the dashboard analyses for Snowflake into `target/snowflake/` without introspection, so it needs no connection and leaves the DuckDB-compiled files alone.
 
 ## Dependency log
 

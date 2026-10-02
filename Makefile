@@ -2,11 +2,15 @@
 
 SEED ?= 42
 CLOSE_PERIODS := 2026-04 2026-05 2026-06 2026-07 2026-08 2026-09
+TARGET ?= duckdb
+# Snowflake commands read .env and need the optional snowflake dependency group (ADR-021).
+SNOWFLAKE_ENV := set -a; [ -f .env ] && . ./.env; set +a;
+CLOSE := uv run $(if $(filter snowflake,$(TARGET)),--group snowflake) python scripts/close.py --target $(TARGET)
 CONFIG ?= config/simulation.yml
 DBT := uv run dbt
 DBT_ARGS := --profiles-dir .
 
-.PHONY: setup seeds data test-gen test lint build fence snowflake dashboard demo close close-history
+.PHONY: setup seeds data test-gen test lint build fence snowflake dashboard dashboard-snowflake demo close close-history
 
 setup:  ## uv sync, dbt deps (once dbt_project.yml exists), pre-commit install
 	uv sync
@@ -40,8 +44,7 @@ fence:  ## only models/audit may read the answer key
 
 snowflake:  ## load data/ into Snowflake with write_pandas, then dbt build --target snowflake (reads .env)
 	uv run --group snowflake python scripts/snowflake_load.py
-	set -a; [ -f .env ] && . ./.env; set +a; \
-		uv run --group snowflake dbt build --target snowflake $(DBT_ARGS)
+	$(SNOWFLAKE_ENV) uv run --group snowflake dbt build --target snowflake $(DBT_ARGS)
 
 dashboard:  ## compile analyses/dashboard and run each query on the local DuckDB build
 	$(DBT) compile --select "path:analyses" $(DBT_ARGS)
@@ -52,12 +55,22 @@ demo:  ## fresh-clone DuckDB demo: generate, load, build and test, then print th
 	$(MAKE) build
 	$(MAKE) dashboard
 
-close:  ## post one as-of close to the ledger: make close PERIOD=2026-09 [FORCE=1]
+close:  ## post one as-of close: make close PERIOD=2026-09 [FORCE=1] [TARGET=snowflake]
 	@test -n "$(PERIOD)" || (echo "close: set PERIOD=YYYY-MM" && exit 2)
-	uv run python scripts/close.py --period $(PERIOD) $(if $(FORCE),--force)
+	$(CLOSE) --period $(PERIOD) $(if $(FORCE),--force)
 
-close-history:  ## replay the April-September 2026 closes, then rebuild so restatements show
+close-history:  ## replay the Apr-Sep 2026 closes, then rebuild: [FORCE=1] [TARGET=snowflake]
 	for period in $(CLOSE_PERIODS); do \
-		uv run python scripts/close.py --period $$period $(if $(FORCE),--force) || exit $$?; \
+		$(CLOSE) --period $$period $(if $(FORCE),--force) || exit $$?; \
 	done
+ifeq ($(TARGET),snowflake)
+	$(SNOWFLAKE_ENV) uv run --group snowflake dbt build --target snowflake $(DBT_ARGS)
+else
 	$(MAKE) build
+endif
+
+dashboard-snowflake:  ## compile analyses/dashboard for Snowflake (no connection) and print the files
+	$(SNOWFLAKE_ENV) uv run --group snowflake dbt compile --target snowflake \
+		--select "path:analyses/dashboard" --no-introspect --no-populate-cache \
+		--target-path target/snowflake --quiet $(DBT_ARGS)
+	@find $(CURDIR)/target/snowflake/compiled/seats_to_cash/analyses/dashboard -name '*.sql' | sort

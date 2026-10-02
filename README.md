@@ -41,7 +41,7 @@ Or step by step:
 - `make close-history` posts the April–September 2026 closes and shows what was restated.
 - `make close PERIOD=2026-09` posts one close; `FORCE=1` replaces a posted one.
 - `make dashboard` runs `analyses/dashboard/*.sql`.
-- `make test` runs every pytest suite. `make data CONFIG=config/ci.yml` builds a 10% dataset in about 10 seconds. `make snowflake` loads the same data into Snowflake and builds there; see [docs/SETUP.md](docs/SETUP.md).
+- `make test` runs every pytest suite. `make data CONFIG=config/ci.yml` builds a 10% dataset in about 10 seconds. `make snowflake` loads the same data into Snowflake and builds there. `make close-history TARGET=snowflake` posts the closes on Snowflake, and `make dashboard-snowflake` prints the compiled dashboard SQL for it. See [docs/SETUP.md](docs/SETUP.md).
 
 ## What's here
 

@@ -23,7 +23,7 @@ Features set the scope boundary, not raw tables (ADR-012). Keep every raw table 
 ## Hard rules
 
 - Synthetic people and companies only; use `.example` for invented business domains.
-- The answer key is restricted to audit models and generator/tests. Run `scripts/check_truth_fence.py` after dbt work .
+- The answer key is restricted to audit models and generator/tests. Run `scripts/check_truth_fence.py` after dbt work.
 - Deterministic generation: simulation clock only, explicit NumPy RNG streams, stable ordering, fixed Parquet options. Never use wall-clock time, stdlib random, unseeded RNG, or hash-dependent output order.
 - `seeds/price_book.csv` is the single price authority. No hardcoded plan IDs or prices in Python/SQL.
 - USD only. Stripe minor units are integer cents; Orb amounts are decimal strings; marts use `numeric(18,2)` USD.
@@ -43,9 +43,10 @@ Features set the scope boundary, not raw tables (ADR-012). Keep every raw table 
 | `make seeds` | Rebuild the committed email-domain and close-calendar seeds | now |
 | `make build` | dbt build on DuckDB, then the truth-fence check | now |
 | `make test` | Every pytest suite | now |
-| `make close PERIOD=2026-09` | Build and append one as-of close (`FORCE=1` replaces) | now |
-| `make close-history` | Replay April–September 2026 closes, then rebuild | now |
+| `make close PERIOD=2026-09` | Build and append one as-of close (`FORCE=1` replaces; `TARGET=snowflake`) | now |
+| `make close-history` | Replay April–September 2026 closes, then rebuild (`TARGET=snowflake`) | now |
 | `make dashboard` | Run `analyses/dashboard/*.sql` on DuckDB | now |
+| `make dashboard-snowflake` | Compile the dashboard SQL for Snowflake and print the file paths | now |
 | `make snowflake` | Snowflake load and dbt build, run locally by the owner | now |
 | `make demo` | Fresh-clone DuckDB demo | now |
 

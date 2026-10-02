@@ -67,6 +67,9 @@ models:
     columns:
       - name: salesforce_account_id
         data_tests: [unique, not_null]
+      - name: account_name
+        description: Salesforce Account Name; required when Hightouch creates the account.
+        data_tests: [not_null]
       - name: tailnet_id
         data_tests: [unique, not_null]
       - name: migration_risk_tier

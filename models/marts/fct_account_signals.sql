@@ -24,6 +24,7 @@ users as (
 
 select
     a.salesforce_account_id,
+    a.account_name,
     a.tailnet_id,
     cast(coalesce(m.arr_usd, 0) as numeric(18, 2)) as arr_usd,
     coalesce(s.seats_held, 0) as seats_held,

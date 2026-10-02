@@ -4,6 +4,18 @@ Updated 2026-10-02 after the focus-scope reconcile. The first audit (commit `98e
 
 ## Progress log
 
+### Snowflake follow-ups
+
+- **Your run on Snowflake:** `make snowflake` loaded all 32 tables, and `dbt build --target snowflake` passed 126/126.
+- **`fct_account_signals.account_name`:** taken from the Salesforce account and tested not null. Hightouch maps it to `Name` when it creates accounts in a fresh Developer org (SETUP).
+- **Closes on either warehouse:** `make close` and `make close-history` take `TARGET=snowflake` (ADR-025).
+  - `scripts/close.py` uses one ledger class over DuckDB or the Snowflake connector, reading `.env` like `make snowflake`.
+  - The as-of build runs `dbt build --target snowflake`, and `close-history` ends with a Snowflake rebuild.
+  - The DuckDB path is unchanged: re-verified end to end on CI data (six closes, then 128/128).
+  - The Snowflake path is covered by tests with a fake DB-API connection. **It has not connected to Snowflake from here.**
+- **`make dashboard-snowflake`:** compiles `analyses/dashboard/*.sql` for Snowflake without a connection into `target/snowflake/` and prints the seven file paths.
+- **Tests:** `make test` passes 115, including the new close tests.
+
 ### Tier 3 (items 10 and 11; item 9 skipped by decision) — final state
 
 - **Item 10, leap day:**
