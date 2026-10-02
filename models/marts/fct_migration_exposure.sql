@@ -4,7 +4,7 @@
 with legacy as (
     select *
     from {{ ref('fct_mrr_monthly') }}
-    where price_version = 'v3'
+    where price_version = 'v3' and billing_basis = 'mau'  -- enterprise contracts renew, not migrate
         and month = (select max(month) from {{ ref('fct_mrr_monthly') }})
 ),
 

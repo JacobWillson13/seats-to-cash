@@ -4,6 +4,34 @@ Updated 2026-10-02 after the focus-scope reconcile. The first audit (commit `98e
 
 ## Progress log
 
+### demo-done (Tier 2 complete)
+
+- **Built:**
+  - `fct_migration_exposure` and `fct_account_signals` (ADR-022), plus a migration-exposure dashboard query.
+  - `lookml/` (two views, one explore), parse-tested with lkml.
+  - D05 late refunds and credit notes.
+  - As-of gates in every staging model.
+  - `make close` and `make close-history` with an append-only `finance_close.close_ledger`, `fct_close_ledger`, and `fct_restatements` (ADR-023), plus a restatements dashboard query.
+  - `.github/workflows/ci.yml`.
+- **D05 rate:** raised from 0.05 to 0.10 so that restatements cover several periods and include late credit notes.
+- **Default run:** `make demo` takes 50 s and passes 126 dbt nodes; `make close-history` takes 97 s.
+  - Six closes are posted. 14 closed figures were restated afterwards, in 5 of the 6 periods:
+    - April: late credit notes, revenue −$234.00.
+    - May: late credit notes, revenue −$18.00.
+    - June: a late credit note and a late refund, revenue −$1,332.00.
+    - July: late refunds, revenue −$57.00.
+    - September: late refunds, revenue −$154.00.
+  - August had no late rows. Every restatement is explained.
+  - D05: 21 injected, 8 detected at a close, 21 handled.
+  - Migration exposure: 453 legacy tailnets with $437,760 ARR project to $664,200 on v4. Risk tiers: 396 high (248 above 40% uplift, plus 148 with no legacy MRR), 46 medium, 11 low.
+  - Account signals: 152 accounts, 128 sync-eligible.
+  - Answer-key audits are unchanged: MRR 14,924/14,924 and revenue 15,247/15,247.
+- **Tests:** `make test` passes 108 (generator 98, project 10).
+- **Open:**
+  - The workflow triggers on pull requests and pushes to `main`, so it has not run yet; its steps all pass locally.
+  - Tags cannot be pushed (HTTP 403). Create `demo-done` on the commit that adds this entry.
+  - `make snowflake` has never run against a real account here.
+
 ### demo-v1 (Tier 1 complete)
 
 - **Built:**
