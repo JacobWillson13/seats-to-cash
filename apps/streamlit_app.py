@@ -36,7 +36,14 @@ SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a"]  # first three slots: safe for
 SINGLE = "#2a78d6"
 GRID = "#e6e5e1"
 
-session = get_active_session()
+try:
+    from snowflake.snowpark.context import get_active_session
+
+    session = get_active_session()
+except Exception:
+    session = st.connection("snowflake").session()
+
+session.use_warehouse("TRANSFORMING")
 
 
 def _frame(sql: str) -> pd.DataFrame:
