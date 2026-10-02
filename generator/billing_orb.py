@@ -1,6 +1,6 @@
 """Orb source rendering from recorded lifecycle, seat, activity, and contract facts.
 
-Every amount is a USD Decimal rounded half up per line. No lifecycle outcome is
+Every amount is a local-currency Decimal rounded half up per line. No lifecycle outcome is
 sampled here: payment failures, recovery, and uncollectible credits follow transition facts.
 """
 
@@ -15,15 +15,16 @@ from decimal import ROUND_HALF_UP, Decimal
 from generator.app_db import Ids
 from generator.clock import add_months
 from generator.lifecycle import State, Trigger
-from generator.population import KIND_INTERNAL
+from generator.population import CURRENCIES, KIND_DIRECT, KIND_INTERNAL
+from generator.rng import Stream, entity_rng
 from generator.seats import ACTORS
 from generator.tables import ORB_TABLES
 
 CENT = Decimal("0.01")
 ZERO = Decimal("0.00")
-PAID = {State.STARTER, State.STANDARD, State.PREMIUM, State.ENTERPRISE}
+PAID = {State.PERSONAL_PLUS, State.STARTER, State.STANDARD, State.PREMIUM, State.ENTERPRISE}
 SELF_SERVE = {State.STARTER, State.STANDARD, State.PREMIUM}
-CURRENCY = "USD"
+COUNTRIES = ("US", "DE", "GB")
 
 
 def money(value: Decimal) -> Decimal:
@@ -71,6 +72,8 @@ class Term:
     end_reason: str | None
     price_id: str
     customer_id: str
+    currency: str
+    channel: str
     discount: Decimal
 
 
@@ -123,6 +126,16 @@ def _terms(sim, ids):
                 continue
             code = sim.plan_codes[int(tr["to_plan"][j])]
             price = sim.seeds.price_book.plan_version_price(code, f"v{version}")
+            currency = (
+                CURRENCIES[int(sim.b.currency[tailnet])]
+                if domain
+                else CURRENCIES[int(sim.pop.personal.currency[tailnet])]
+            )
+            channel = "stripe"
+            if target == State.ENTERPRISE:
+                channel = ("stripe", "aws_marketplace", "azure_marketplace")[
+                    int(sim.b.channel[tailnet])
+                ]
             discount = ZERO
             if domain and sim.b.kind[tailnet] == KIND_INTERNAL:
                 discount = sim.seeds.price_book.price("disc_internal").discount_pct
@@ -143,6 +156,8 @@ def _terms(sim, ids):
                 None,
                 price.price_id,
                 customer_id,
+                currency,
+                channel,
                 discount,
             )
             all_terms.append(current)
@@ -207,6 +222,24 @@ class Builder:
             tailnet = int(sim.users.tailnet[user])
             month = int(self.cal.month_of[day])
             self.mau[tailnet, month].add(int(user))
+        self.personal_devices = {
+            (int(t), int(m)): int(n)
+            for t, m, n in zip(personal.tailnet, personal.month, personal.user_devices, strict=True)
+        }
+        self.business_devices = {}
+        activity = sim.activity.arrays()
+        for tn, day, n in zip(
+            activity["tailnet"], activity["day"], activity["user_devices"], strict=True
+        ):
+            self.business_devices[int(tn), int(self.cal.month_of[day])] = int(n)
+        self.mullvad = {}
+        for term in self.terms:
+            key = (term.domain, term.tailnet)
+            if key not in self.mullvad:
+                self.mullvad[key] = (
+                    entity_rng(sim.config.seed, Stream.MULLVAD_ATTACH, *key).random()
+                    < sim.config.addons.mullvad_attach_rate
+                )
 
     def ts(self, day, second=39_600):
         return int(self.cal.epoch_us(day, second))
@@ -215,49 +248,48 @@ class Builder:
         # Fixed one-hour export lag; safely within the configured 1–24 hour window.
         return ts + 3_600_000_000
 
-    def price_key(self, price_id):
-        return f"op_{price_id}_{CURRENCY.lower()}"
-
-    def plan_id(self, price):
-        return f"plan_{price.plan_code}_{price.price_version}_{CURRENCY.lower()}"
+    def price_key(self, price_id, currency):
+        return f"op_{price_id}_{currency.lower()}"
 
     def catalog(self):
-        catalog = set()
+        catalog = {}
         for price in self.book:
-            key = (price.plan_code, price.price_version)
-            created_day = max(0, self.cal.day(price.valid_from))
-            start = self.ts(created_day, 0)
-            if key not in catalog:
-                self.rows["plans"].append(
+            for currency in self.book.currencies:
+                key = (price.plan_code, price.price_version, currency)
+                plan_id = f"plan_{price.plan_code}_{price.price_version}_{currency.lower()}"
+                created_day = max(0, self.cal.day(price.valid_from))
+                start = self.ts(created_day, 0)
+                if key not in catalog:
+                    self.rows["plans"].append(
+                        {
+                            "id": plan_id,
+                            "external_plan_id": price.plan_code,
+                            "name": price.plan_name,
+                            "price_version": price.price_version,
+                            "currency": currency,
+                            "created_at": start,
+                            "_exported_at": self.export(start),
+                        }
+                    )
+                    catalog[key] = True
+                self.rows["prices"].append(
                     {
-                        "id": self.plan_id(price),
-                        "external_plan_id": price.plan_code,
-                        "name": price.plan_name,
-                        "price_version": price.price_version,
-                        "currency": CURRENCY,
-                        "created_at": start,
+                        "id": self.price_key(price.price_id, currency),
+                        "plan_id": plan_id,
+                        "external_price_id": price.price_id,
+                        "item_name": price.item,
+                        "model_type": {"package": "package", "flat": "flat"}.get(
+                            price.billing_basis, "unit"
+                        ),
+                        "unit_amount": decimal(price.unit_amount(currency))
+                        if price.unit_amounts
+                        else None,
+                        "package_size": price.package_size,
+                        "cadence": price.cadence,
+                        "billing_timing": price.billing_timing,
                         "_exported_at": self.export(start),
                     }
                 )
-                catalog.add(key)
-            self.rows["prices"].append(
-                {
-                    "id": self.price_key(price.price_id),
-                    "plan_id": self.plan_id(price),
-                    "external_price_id": price.price_id,
-                    "item_name": price.item,
-                    "model_type": "unit",
-                    "unit_amount": (
-                        decimal(price.unit_amount_usd)
-                        if price.unit_amount_usd is not None
-                        else None
-                    ),
-                    "package_size": price.package_size,
-                    "cadence": price.cadence,
-                    "billing_timing": price.billing_timing,
-                    "_exported_at": self.export(start),
-                }
-            )
 
     def customers(self):
         for domain, count in ((0, len(self.sim.pop.personal.created_day)), (1, self.sim.b.n)):
@@ -269,6 +301,13 @@ class Builder:
                     company = int(self.sim.b.company[tn])
                     name = self.sim.pop.company_name[company]
                     email = f"billing@{self.sim.pop.company_domain[company]}"
+                    currency = CURRENCIES[int(self.sim.b.currency[tn])]
+                    provider = (
+                        None
+                        if int(self.sim.b.kind[tn]) == KIND_DIRECT
+                        and int(self.sim.b.channel[tn]) in (1, 2)
+                        else "stripe"
+                    )
                     external = self.ids.business_tailnet[tn]
                 else:
                     day = int(self.sim.pop.personal.created_day[tn])
@@ -277,6 +316,8 @@ class Builder:
                     email = self.sim.pop.people.personal_email[
                         int(self.sim.pop.personal.creator[tn])
                     ]
+                    currency = CURRENCIES[int(self.sim.pop.personal.currency[tn])]
+                    provider = "stripe"
                     external = self.ids.personal_tailnet[tn]
                 issued = self.ts(day, sec)
                 customer = {
@@ -284,15 +325,34 @@ class Builder:
                     "external_customer_id": external,
                     "name": name,
                     "email": email,
-                    "currency": CURRENCY,
-                    "payment_provider": "stripe",
-                    "payment_provider_id": f"cus_{domain}_{tn}",
-                    "billing_country": "US",
+                    "currency": currency,
+                    "payment_provider": provider,
+                    "payment_provider_id": f"cus_{domain}_{tn}" if provider else None,
+                    "billing_country": COUNTRIES[CURRENCIES.index(currency)],
                     "created_at": issued,
                     "metadata": json.dumps({"tailnet_id": external}),
                     "_exported_at": self.export(issued),
                 }
                 self.rows["customers"].append(customer)
+                if domain and provider and int(self.sim.b.channel[tn]) in (1, 2):
+                    close = next(
+                        (
+                            e
+                            for e in self.sim.contract_events
+                            if e.tailnet == tn and e.kind in ("close", "child")
+                        ),
+                        None,
+                    )
+                    if close is not None:
+                        changed = self.ts(close.day, close.sec)
+                        self.rows["customers"].append(
+                            {
+                                **customer,
+                                "payment_provider": None,
+                                "payment_provider_id": None,
+                                "_exported_at": max(self.export(changed), self.export(issued) + 1),
+                            }
+                        )
 
     def subscriptions(self):
         for term in self.terms:
@@ -301,10 +361,10 @@ class Builder:
             base = {
                 "id": term.id,
                 "customer_id": term.customer_id,
-                "plan_id": self.plan_id(price),
+                "plan_id": f"plan_{price.plan_code}_{price.price_version}_{term.currency.lower()}",
                 "start_date": _date(self.cal, term.start),
                 "net_terms": 30 if term.state == State.ENTERPRISE else 0,
-                "invoicing_channel": "stripe",
+                "invoicing_channel": term.channel,
                 "discount_pct": decimal(term.discount),
                 "created_at": created,
             }
@@ -355,7 +415,7 @@ class Builder:
                     {
                         "id": f"sq_{term.id}_{j}",
                         "subscription_id": term.id,
-                        "price_id": self.price_key(term.price_id),
+                        "price_id": self.price_key(term.price_id, term.currency),
                         "effective_date": _date(self.cal, day),
                         "quantity": held,
                         "source": "auto_seat" if actor == "system" and j else actor,
@@ -364,6 +424,8 @@ class Builder:
                     }
                 )
         for event in self.sim.contract_events:
+            if event.kind not in ("close", "child", "renewal", "expansion"):
+                continue
             term = self.term_on(1, event.tailnet, event.day)
             if term is None:
                 continue
@@ -372,7 +434,7 @@ class Builder:
                 {
                     "id": f"sq_contract_{event.tailnet}_{event.day}_{event.kind}",
                     "subscription_id": term.id,
-                    "price_id": self.price_key(term.price_id),
+                    "price_id": self.price_key(term.price_id, event.currency),
                     "effective_date": _date(self.cal, event.day),
                     "quantity": event.seats,
                     "source": "sales",
@@ -394,12 +456,13 @@ class Builder:
         )
         subtotal = sum((item[5] for item in lines), ZERO)
         discount_total = -sum((item[5] for item in lines if item[0] == "discount"), ZERO)
+        external = term.channel != "stripe"
         base = {
             "id": iid,
             "invoice_number": f"WF-{self.invoice_seq:08d}",
             "customer_id": term.customer_id,
             "subscription_id": term.id,
-            "currency": CURRENCY,
+            "currency": term.currency,
             "invoice_date": issue_date,
             "issued_at": issued,
             "service_period_start": service_start,
@@ -410,12 +473,14 @@ class Builder:
             "discount_total": decimal(discount_total),
             "tax": decimal(ZERO),
             "total": decimal(subtotal),
-            "external_sync_id": None if subtotal <= 0 else f"in_{self.invoice_seq:08d}",
+            "external_sync_id": (
+                None if external or subtotal <= 0 else f"in_{self.invoice_seq:08d}"
+            ),
         }
         unpaid = ((term.domain, term.tailnet), issue_day) in self.failures and subtotal > 0
         first = {
             **base,
-            "status": "issued",
+            "status": "external" if external else "issued",
             "paid_at": None,
             "amount_due": decimal(subtotal),
             "_exported_at": self.export(issued),
@@ -430,7 +495,7 @@ class Builder:
                 "id": lid,
                 "invoice_id": iid,
                 "subscription_id": term.id,
-                "price_id": self.price_key(price_id),
+                "price_id": self.price_key(price_id, term.currency),
                 "line_type": line_type,
                 "applies_to_line_id": last_positive if line_type == "discount" else linked,
                 "name": name,
@@ -445,7 +510,10 @@ class Builder:
             self.lines_of[iid].append(row)
             if line_type != "discount":
                 last_positive = lid
-            for revenue_date, daily_amount in allocate_daily(amount, start, end):
+            revenue_dates = (
+                [(end, amount)] if line_type == "one_time" else allocate_daily(amount, start, end)
+            )
+            for revenue_date, daily_amount in revenue_dates:
                 self.rows["daily_line_item_revenue"].append(
                     {
                         "revenue_date": revenue_date,
@@ -454,11 +522,11 @@ class Builder:
                         "customer_id": term.customer_id,
                         "price_id": row["price_id"],
                         "recognized_amount": decimal(daily_amount),
-                        "currency": CURRENCY,
+                        "currency": term.currency,
                         "_exported_at": self.export(issued),
                     }
                 )
-        if not unpaid:
+        if not external and not unpaid:
             paid_day = min(issue_day + 1, self.cal.n_days - 1)
             paid = self.ts(paid_day, 54_000)
             if paid <= issued:
@@ -475,7 +543,7 @@ class Builder:
         return iid
 
     def positive_line(self, term, line_type, price, start, end, qty, amount, *, name=None):
-        unit = price.unit_amount_usd if price.unit_amount_usd is not None else amount
+        unit = price.unit_amount(term.currency) if price.unit_amounts else amount
         return (
             line_type,
             price.price_id,
@@ -510,6 +578,26 @@ class Builder:
             None,
         )
 
+    def addons(self, term, month, start, end):
+        lines = []
+        if term.domain and term.version == 4 and term.state in SELF_SERVE:
+            price = next(p for p in self.book if p.item == "tagged_resource")
+            n = max(0, int(self.sim.b.tagged_resources[term.tailnet]) - (price.free_units or 0))
+            if n:
+                amount = money(price.unit_amount(term.currency) * n)
+                lines.append(self.positive_line(term, "addon", price, start, end, n, amount))
+        if self.mullvad[term.domain, term.tailnet]:
+            device_month = month if term.version == 3 and term.state in SELF_SERVE else month - 1
+            devices = (self.business_devices if term.domain else self.personal_devices).get(
+                (term.tailnet, device_month), 0
+            )
+            price = next(p for p in self.book if p.billing_basis == "package")
+            packages = (devices + (price.package_size or 5) - 1) // (price.package_size or 5)
+            if packages:
+                amount = money(price.unit_amount(term.currency) * packages)
+                lines.append(self.positive_line(term, "addon", price, start, end, packages, amount))
+        return lines
+
     def self_serve_invoices(self):
         cal = self.cal
         for (_domain, tailnet), terms in self.by_key.items():
@@ -534,12 +622,29 @@ class Builder:
                     issue = end_day + 1
                     price = self.book.price(term.price_id)
                     count = max(0, len(self.mau[tailnet, month]) - (price.free_units or 0))
-                    amount = money(price.unit_amount() * count)
+                    amount = money(price.unit_amount(term.currency) * count)
                     base = self.positive_line(term, "usage", price, start, end, count, amount)
                     lines = [base]
                     if disc := self.discount_line(term, base):
                         lines.append(disc)
+                    lines += self.addons(term, month, start, end)
                     self.invoice(term, issue, start, end, lines)
+                plus = [t for t in active if t.state == State.PERSONAL_PLUS]
+                if plus:
+                    term = plus[0]
+                    issue = max(start_day, term.start)
+                    service_start = cal.dates[issue]
+                    price = self.book.price(term.price_id)
+                    days = (end - service_start).days + 1
+                    amount = prorate(
+                        price.unit_amount(term.currency), 1, days, (end - start).days + 1
+                    )
+                    base = self.positive_line(term, "fixed", price, service_start, end, 1, amount)
+                    lines = [base]
+                    if disc := self.discount_line(term, base):
+                        lines.append(disc)
+                    lines += self.addons(term, month, service_start, end)
+                    self.invoice(term, issue, service_start, end, lines)
                 seat_terms = [t for t in active if t.version == 4 and t.state in SELF_SERVE]
                 if seat_terms:
                     term = next(
@@ -560,7 +665,7 @@ class Builder:
                     )
                     fraction_days = (end - service_start).days + 1
                     amount = prorate(
-                        price.unit_amount(),
+                        price.unit_amount(term.currency),
                         held,
                         fraction_days,
                         (end - start).days + 1,
@@ -602,7 +707,7 @@ class Builder:
                                 continue
                             service_date = cal.dates[day]
                             prorated = prorate(
-                                prior_price.unit_amount(),
+                                prior_price.unit_amount(term.currency),
                                 delta,
                                 prior_end - day + 1,
                                 prior_days,
@@ -619,6 +724,7 @@ class Builder:
                             lines.append(line)
                             if disc := self.discount_line(term, line):
                                 lines.append(disc)
+                    lines += self.addons(term, month, service_start, end)
                     self.invoice(term, issue, service_start, end, lines)
             # September additions must still bill on October 1 without October service.
             last = terms[-1]
@@ -647,7 +753,7 @@ class Builder:
                     if not delta or (day, sec) <= (baseline_day, baseline_sec):
                         continue
                     amount = prorate(
-                        price.unit_amount(),
+                        price.unit_amount(last.currency),
                         delta,
                         prior_end - day + 1,
                         prior_end - prior_start + 1,
@@ -678,12 +784,14 @@ class Builder:
             terms = [t for t in self.by_key[1, tailnet] if t.state == State.ENTERPRISE]
             for term in terms:
                 starts = [
-                    e for e in history if e.kind in ("close", "renewal") and e.day == term.start
+                    e
+                    for e in history
+                    if e.kind in ("close", "child", "renewal") and e.day == term.start
                 ]
                 if not starts:
                     continue
                 event = starts[-1]
-                anniversary = self.cal.dates[event.day]
+                anniversary = cal_date = self.cal.dates[event.day]
                 while (
                     self.cal.day(anniversary) < self.cal.n_days
                     and self.cal.day(anniversary) < event.contract_end_day
@@ -719,6 +827,21 @@ class Builder:
                         name="Enterprise annual contract",
                     )
                     lines = [line]
+                    if anniversary == cal_date and event.services_amount:
+                        service_price = next(p for p in self.book if p.billing_basis == "one_time")
+                        delivered = _date(self.cal, event.services_delivery_day)
+                        lines.append(
+                            self.positive_line(
+                                term,
+                                "one_time",
+                                service_price,
+                                anniversary,
+                                delivered,
+                                1,
+                                event.services_amount,
+                                name="Professional services",
+                            )
+                        )
                     self.invoice(term, issue, anniversary, service_end, lines)
                     anniversary = next_anniversary
             for event in history:
@@ -731,7 +854,8 @@ class Builder:
                     (
                         e
                         for e in reversed(history)
-                        if e.day < event.day and e.kind in ("close", "renewal", "expansion")
+                        if e.day < event.day
+                        and e.kind in ("close", "child", "renewal", "expansion")
                     ),
                     None,
                 )

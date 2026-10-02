@@ -27,14 +27,14 @@ Plan codes are `personal`, `starter`, `standard`, `premium`, and `enterprise`.
 
 ## raw_orb (Orb export)
 
-Every table carries `_exported_at`, the export load time. Price IDs are `op_<price_book price_id>_usd` (for example `op_v4_standard_usd`). Plan IDs are `plan_<plan_code>_<price_version>_usd`.
+Every table carries `_exported_at`, the export load time. Price IDs are `op_<price_book price_id>_<currency>` (for example `op_v4_standard_usd`); plan IDs are `plan_<plan_code>_<price_version>_<currency>`. Invoiced rows are always USD.
 
 | Table | Grain | Columns | Used by marts |
 |---|---|---|---|
-| `customers` | Version log per customer | id, external_customer_id (tailnet ID), name, email, currency, payment_provider (`stripe`), payment_provider_id, billing_country, created_at, metadata | yes |
-| `plans` | One row per plan and version | id, external_plan_id, name, price_version, currency, created_at | staged only |
-| `prices` | One row per price-book price | id, plan_id, external_price_id, item_name, model_type, unit_amount, package_size, cadence, billing_timing | staged only |
-| `subscriptions` | Version log per subscription term | id, customer_id, plan_id, status (`active`, `ended`), start_date, end_date, net_terms, invoicing_channel (`stripe`), discount_pct, ended_reason (`voluntary`, `involuntary`, `migrated`, `replaced`), created_at | yes |
+| `customers` | Version log per customer | id, external_customer_id (tailnet ID), name, email, currency (`USD`), payment_provider (`stripe`), payment_provider_id, billing_country, created_at, metadata | yes |
+| `plans` | One row per plan, version, and price-book currency column | id, external_plan_id, name, price_version, currency, created_at | staged only |
+| `prices` | One row per price-book price and currency column | id, plan_id, external_price_id, item_name, model_type, unit_amount, package_size, cadence, billing_timing | staged only |
+| `subscriptions` | Version log per subscription term | id, customer_id, plan_id, status (`active`, `ended`), start_date, end_date, net_terms, invoicing_channel (always `stripe`; see disabled options), discount_pct, ended_reason (`voluntary`, `involuntary`, `migrated`, `replaced`), created_at | yes |
 | `subscription_quantity_changes` | Append-only | id, subscription_id, price_id, effective_date, quantity, source (`admin`, `scim`, `system`, `auto_seat`, `sales`), recorded_at | staged only |
 | `invoices` | Version log per invoice | id, invoice_number, customer_id, subscription_id, status (`issued`, `paid`), currency, invoice_date, issued_at, service_period_start, service_period_end, due_date, paid_at, voided_at, subtotal, discount_total, tax, total, amount_due, external_sync_id (Stripe invoice ID; null for zero-total invoices) | yes |
 | `invoice_line_items` | Append-only | id, invoice_id, subscription_id, price_id, line_type (`usage`, `fixed`, `proration`, `discount`), applies_to_line_id, name, start_date, end_date, quantity, unit_amount, amount | yes |
@@ -59,7 +59,7 @@ Every PLG tailnet that reaches the enterprise seat threshold, and every direct-s
 | Table | Grain | Columns |
 |---|---|---|
 | `account` | Version log (`Prospect`, then `Customer` at signing) | id, name, website, type, industry, number_of_employees, billing_country, owner_id, created_date, last_modified_date, tailnet_id__c, customer_tier__c |
-| `opportunity` | Version log (open, then `Closed Won` at signing) | id, account_id, name, type, stage_name, is_closed, is_won, amount, close_date, created_date, last_modified_date, probability, owner_id, lead_source, contract_term_months__c, contract_start_date__c, recurring_arr__c |
+| `opportunity` | Version log (open, then `Closed Won` at signing) | id, account_id, name, type, stage_name, is_closed, is_won, amount, close_date, created_date, last_modified_date, probability, owner_id, lead_source, contract_term_months__c, contract_start_date__c, recurring_arr__c, purchase_channel__c (`stripe` when won), marketplace_offer_id__c (always null) |
 | `lead` | One row per direct-sales account | id, account_id, lead_source, status, created_date |
 | `user` | The single owning sales user | id, name, email, user_role_name, is_active |
 
@@ -73,10 +73,26 @@ Every PLG tailnet that reaches the enterprise seat threshold, and every direct-s
 
 | Table | Status | Columns |
 |---|---|---|
-| `truth_enterprise_contracts` | written | tailnet_id, event_date, event_kind (`close`, `renewal`, `expansion`), enterprise_source (`plg`, `direct`), price_id, contract_start_date, contract_end_date, term_months, seats, discount_pct, recurring_acv |
+| `truth_enterprise_contracts` | written | tailnet_id, event_date, event_kind (`close`, `renewal`, `expansion`), enterprise_source (`plg`, `direct`), parent_tailnet_id (always null), price_id, currency (`USD`), channel (`stripe`), contract_start_date, contract_end_date, term_months, seats, discount_pct, recurring_acv, services_amount (`0.00`), services_delivery_date |
 | `truth_mrr_monthly` | planned (task b) | tailnet_id, month, plan_code, price_version, billing_basis, quantity, mrr_runrate_usd, mrr_billed_usd, is_internal |
 | `truth_revenue_monthly` | planned (task b) | tailnet_id, month, revenue_usd |
 | `truth_identity` | planned (task b) | tailnet_id, orb_customer_id, stripe_customer_id, salesforce_account_id |
 | `defect_manifest` | planned (task b) | defect_id, defect_code, source_table, record_key, injected_at_sim, notes |
 
 Truth references may be read only by models in `models/audit/`. Other marts derive results from raw source tables.
+
+## Disabled options
+
+These features are outside the project scope. Their generator code remains, but each is switched off in `config/simulation.yml`, and config validation rejects a nonzero value (ADR-012). The table columns they would populate stay in the contracts above with the constant or null values noted.
+
+| Feature | Config switch (must be 0) | Effect on landed tables |
+|---|---|---|
+| Multi-currency | `population.currencies` EUR and GBP (USD is 1.0) | Every `currency` column is `USD`. The price book's EUR and GBP columns still produce catalog rows in Orb `plans` and `prices`, which no subscription uses. |
+| Personal Plus | `personal.plus_upgrade_monthly`, `plus_downgrade_monthly`, `plus_retirement_downgrade_share` | No `personal_plus` subscriptions, plan changes, or invoices. |
+| Services | `enterprise.services_attach_rate` | No `one_time` invoice lines; `services_amount` is `0.00`. |
+| Marketplace | `enterprise.marketplace_share`, `payments.marketplace_fee_pct` | No `external` invoice status; `invoicing_channel` and `purchase_channel__c` are `stripe`; `marketplace_offer_id__c` is null; customers never change payment provider. |
+| Add-ons (tagged resources, Mullvad) | `addons.tagged_resource_overage_share`, `addons.mullvad_attach_rate` | No `addon` invoice lines. `tailnet_activity_daily.tagged_resources` is still measured. |
+| Multi-tailnet enterprise | `enterprise.multi_tailnet_share` | No `child` contract events; `parent_tailnet_id` is null. |
+| Defects other than the six | `defects.D02_*`, `D04_*`, `D07_*`, `D08_*`, `D10_*`, `D11_*`, `D12_*` | Never injected. |
+
+Bring-to-work facts are kept as data: some business creators ran a personal tailnet first, and their machines can register to both, so `device_registrations.machine_key_hash` links them.

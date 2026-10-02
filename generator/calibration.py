@@ -60,9 +60,13 @@ def build_report(sim, devices, timings: dict[str, float], row_counts: dict[str, 
             conv & (tr["to_state"] == State.PREMIUM) & (tr["to_version"] == 4)
         ),
         "paying business (month end)": stats.paying_month_end,
+        "Personal Plus (month end)": stats.personal_plus_month_end,
         "voluntary churn": count(trig == Trigger.CHURN_VOLUNTARY),
         "involuntary churn": count(trig == Trigger.DUNNING_EXPIRED),
         "reactivations": count(trig == Trigger.REACTIVATION),
+        "Personal Plus downgrades": count(
+            np.isin(trig, [Trigger.PLUS_DOWNGRADE, Trigger.PLUS_RETIREMENT])
+        ),
         "v4 migrations": count(trig == Trigger.MIGRATION_VOLUNTARY),
         "enterprise closes": count(
             np.isin(trig, [Trigger.ENTERPRISE_CLOSE, Trigger.SIGNUP_DIRECT_ENTERPRISE])
@@ -253,12 +257,18 @@ def build_report(sim, devices, timings: dict[str, float], row_counts: dict[str, 
         tr["tailnet"][(tr["domain"] == 1) & np.isin(tr["to_state"], paid_states)]
     )
     business_paid = business_paid[b.kind[business_paid] != 1]
+    plus_ever = np.unique(
+        tr["tailnet"][(tr["domain"] == 0) & (tr["to_state"] == State.PERSONAL_PLUS)]
+    )
     lines += [
         "",
         "## Totals",
         "",
-        f"- Paying business tailnets ever: {business_paid.size:,} (target about 1,000).",
-        f"- Enterprise contracts closed: {enterprise_close_count} (target about 60).",
+        f"- Paying tailnets ever: {business_paid.size:,} business (target about 1,000) "
+        f"plus {plus_ever.size:,} Personal Plus.",
+        f"- Enterprise contracts closed: {enterprise_close_count} "
+        f"(target about 60), with {int(np.sum(trig == Trigger.SIGNUP_ENTERPRISE_TAILNET))} "
+        "extra tailnets for multi-tailnet contracts.",
         f"- Enterprise lead funnel: {int(b.lead.sum())} reached "
         f"{cfg.enterprise.lead_seat_threshold} seats; "
         f"{int(np.sum(b.close_day >= 0))} were selected to close at "

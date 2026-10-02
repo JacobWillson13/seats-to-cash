@@ -34,7 +34,7 @@ def test_two_sources_and_future_pipeline(enterprise_result):
     tr = sim.transitions.arrays()
     plg = int(np.sum(tr["trigger"] == Trigger.ENTERPRISE_CLOSE))
     signed_direct = int(np.sum(tr["trigger"] == Trigger.SIGNUP_DIRECT_ENTERPRISE))
-    assert (plg, signed_direct) == (30, 30)
+    assert (plg, signed_direct) == (32, 30)
     opportunities = pq.read_table(out / "raw/salesforce/opportunity.parquet").to_pylist()
     latest = {}
     for row in opportunities:
@@ -59,12 +59,12 @@ def test_contract_truth_and_salesforce_contracts(enterprise_result):
     truth = pq.read_table(out / "answer_key/truth/truth_enterprise_contracts.parquet")
     assert truth.num_rows == len(result.sim.contract_events)
     assert set(truth["enterprise_source"].to_pylist()) == {"plg", "direct"}
-    assert set(truth["event_kind"].to_pylist()) == {"close", "renewal", "expansion"}
+    assert set(truth["event_kind"].to_pylist()) == {"close", "renewal", "expansion"}  # no child
     for table in (*SF_TABLES.values(), *TRUTH_TABLES.values()):
         root = "answer_key" if table.source == "truth" else "raw"
         data = pq.read_table(out / root / table.source / f"{table.name}.parquet")
         assert data.schema == table.schema
     opportunities = pq.read_table(out / "raw/salesforce/opportunity.parquet").to_pylist()
     won = [row for row in opportunities if row["is_won"]]
-    assert len(won) == 60
+    assert len(won) == 62
     assert all(row["close_date"] <= dt.date(2026, 9, 30) for row in won)

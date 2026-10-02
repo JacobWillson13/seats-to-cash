@@ -23,7 +23,6 @@ REQUIRED_COLUMNS = (
     "price_version",
     "billing_basis",
     "item",
-    "unit_amount_usd",
     "package_size",
     "free_units",
     "max_users",
@@ -35,9 +34,9 @@ REQUIRED_COLUMNS = (
     "channel",
     "notes",
 )
-AMOUNT_COLUMN = re.compile(r"^unit_amount_([a-z]{3})$")  # only unit_amount_usd is allowed
+AMOUNT_COLUMN = re.compile(r"^unit_amount_([a-z]{3})$")
 PRICE_VERSIONS = ("v3", "v4", "all")
-CADENCES = ("monthly", "annual")
+CADENCES = ("monthly", "annual", "one_time")
 BILLING_TIMINGS = ("in_advance", "in_arrears")
 
 
@@ -53,7 +52,7 @@ class Price:
     price_version: str
     billing_basis: str
     item: str
-    unit_amount_usd: Decimal | None  # None when priced per contract
+    unit_amounts: dict[str, Decimal]  # currency -> list price; empty when priced per contract
     package_size: int | None
     free_units: int | None
     max_users: int | None
@@ -65,19 +64,21 @@ class Price:
     channel: str
     notes: str
 
-    def unit_amount(self) -> Decimal:
-        if self.unit_amount_usd is None:
-            raise LookupError(f"{self.price_id} has no list price; it is priced per contract")
-        return self.unit_amount_usd
+    def unit_amount(self, currency: str) -> Decimal:
+        try:
+            return self.unit_amounts[currency]
+        except KeyError:
+            raise LookupError(f"{self.price_id} has no list price in {currency}") from None
 
     def on_sale(self, on_date: dt.date) -> bool:
         return self.valid_from <= on_date and (self.valid_to is None or on_date <= self.valid_to)
 
 
 class PriceBook:
-    def __init__(self, prices: list[Price]):
+    def __init__(self, prices: list[Price], currencies: tuple[str, ...]):
         self._prices = prices
         self._by_id = {p.price_id: p for p in prices}
+        self.currencies = currencies
 
     @classmethod
     def load(cls, path: Path | str) -> PriceBook:
@@ -87,20 +88,21 @@ class PriceBook:
             header = reader.fieldnames or []
             if missing := [c for c in REQUIRED_COLUMNS if c not in header]:
                 raise PriceBookError(f"{path}: missing columns {missing}")
-            if other := [c for c in header if AMOUNT_COLUMN.match(c) and c != "unit_amount_usd"]:
-                raise PriceBookError(f"{path}: USD is the only currency; remove columns {other}")
+            currencies = tuple(m.group(1).upper() for c in header if (m := AMOUNT_COLUMN.match(c)))
+            if not currencies:
+                raise PriceBookError(f"{path}: no unit_amount_<currency> columns")
             prices: list[Price] = []
             seen: set[str] = set()
             for line, row in enumerate(reader, start=2):
                 try:
-                    price = _parse_row(row)
+                    price = _parse_row(row, currencies)
                 except (ValueError, InvalidOperation) as exc:
                     raise PriceBookError(f"{path} line {line}: {exc}") from None
                 if price.price_id in seen:
                     raise PriceBookError(f"{path} line {line}: duplicate price_id {price.price_id}")
                 seen.add(price.price_id)
                 prices.append(price)
-        return cls(prices)
+        return cls(prices, currencies)
 
     def __iter__(self) -> Iterator[Price]:
         return iter(self._prices)
@@ -138,7 +140,7 @@ class PriceBook:
         return matches[0]
 
 
-def _parse_row(row: dict[str, str]) -> Price:
+def _parse_row(row: dict[str, str], currencies: tuple[str, ...]) -> Price:
     price_id = _required(row, "price_id")
     version = _required(row, "price_version")
     if version not in PRICE_VERSIONS:
@@ -150,8 +152,12 @@ def _parse_row(row: dict[str, str]) -> Price:
     if timing is not None and timing not in BILLING_TIMINGS:
         raise ValueError(f"billing_timing must be one of {BILLING_TIMINGS}, got {timing!r}")
 
-    amount = Decimal(row["unit_amount_usd"]) if row["unit_amount_usd"] else None
-    if amount is not None and amount < 0:
+    amounts = {c: row[f"unit_amount_{c.lower()}"] for c in currencies}
+    filled = {c: Decimal(v) for c, v in amounts.items() if v}
+    if filled and len(filled) != len(currencies):
+        blank = sorted(set(currencies) - set(filled))
+        raise ValueError(f"{price_id} has amounts in some currencies but not {blank}")
+    if any(v < 0 for v in filled.values()):
         raise ValueError(f"{price_id} has a negative unit amount")
 
     discount = Decimal(row["discount_pct"]) if row["discount_pct"] else None
@@ -170,7 +176,7 @@ def _parse_row(row: dict[str, str]) -> Price:
         price_version=version,
         billing_basis=_required(row, "billing_basis"),
         item=_required(row, "item"),
-        unit_amount_usd=amount,
+        unit_amounts=filled,
         package_size=_optional_int(row["package_size"]),
         free_units=_optional_int(row["free_units"]),
         max_users=_optional_int(row["max_users"]),

@@ -1,9 +1,4 @@
-"""Enterprise Salesforce facts and the enterprise contract answer key.
-
-Every PLG tailnet that reaches the enterprise seat threshold, and every direct-sales account,
-gets an account and an opportunity. Direct-sales accounts also get a lead. Open pipeline that
-closes after the simulation window stays open.
-"""
+"""Enterprise lead and opportunity facts, including open pipeline beyond the window."""
 
 from __future__ import annotations
 
@@ -16,7 +11,8 @@ from generator.app_db import Ids
 from generator.population import KIND_DIRECT
 
 OWNER = "005000000000001"
-SOURCES = ("Product Qualified Lead", "Inbound", "Outbound")  # LeadSource by lead_source
+SOURCES = ("Product Qualified Lead", "Inbound", "Outbound")
+COUNTRIES = ("US", "DE", "GB")
 
 
 def _columns(table, rows):
@@ -37,13 +33,20 @@ def render(sim):
                 "event_date": cal.dates[e.day],
                 "event_kind": e.kind,
                 "enterprise_source": e.enterprise_source,
+                "parent_tailnet_id": ids[e.parent] if e.parent >= 0 else None,
                 "price_id": e.price_id,
+                "currency": e.currency,
+                "channel": e.channel,
                 "contract_start_date": cal.dates[e.contract_start_day],
                 "contract_end_date": cal.start + dt.timedelta(days=e.contract_end_day),
                 "term_months": e.term_months,
                 "seats": e.seats,
                 "discount_pct": str(e.discount_pct),
                 "recurring_acv": str(e.recurring_acv),
+                "services_amount": str(e.services_amount),
+                "services_delivery_date": cal.start + dt.timedelta(days=e.services_delivery_day)
+                if e.services_delivery_day >= 0
+                else None,
             }
         )
     truth = {
@@ -70,7 +73,7 @@ def render(sim):
             "website": f"https://{pop.company_domain[company]}",
             "industry": None,
             "number_of_employees": int(b.company_size[i]),
-            "billing_country": "US",
+            "billing_country": COUNTRIES[int(b.currency[i])],
             "owner_id": OWNER,
             "created_date": created,
             "tailnet_id__c": ids[i] if int(b.kind[i]) != KIND_DIRECT or contract else None,
@@ -120,6 +123,8 @@ def render(sim):
             "contract_term_months__c": contract.term_months if contract else None,
             "contract_start_date__c": cal.dates[contract.day] if contract else None,
             "recurring_arr__c": contract.recurring_acv if contract else None,
+            "purchase_channel__c": contract.channel if contract else None,
+            "marketplace_offer_id__c": None,
             "is_deleted": False,
         }
         opps.append(

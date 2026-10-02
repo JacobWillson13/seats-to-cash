@@ -29,7 +29,7 @@ def test_entitlements_grid(seeds):
     def features(plan, version):
         return {f for f in FEATURES if e.is_entitled(plan, version, f)}
 
-    assert len(e.plans) == 8
+    assert len(e.plans) == 9
     for plan in e.plans:
         assert base <= features(*plan)
     assert features("starter", "v3") == base
@@ -62,6 +62,23 @@ def test_close_calendar_is_fifth_weekday_of_next_month(seeds, config):
     assert calendar["2026-09"] == dt.date(2026, 10, 7)
 
 
+def test_fx_covers_every_day_of_the_simulation(seeds, config):
+    day = config.sim_start_date
+    while day <= config.end_date:
+        for currency in ("EUR", "GBP"):
+            assert seeds.fx.usd_per_unit(currency, day) > 0
+        day += dt.timedelta(days=1)
+    assert seeds.fx.date_range == (config.sim_start_date, config.end_date)
+    assert seeds.fx.usd_per_unit("USD", day) == 1
+
+
+def test_committed_fx_is_real_ecb_data_only():
+    sources = {
+        row.rsplit(",", 1)[1] for row in (SEEDS / "fx_rates.csv").read_text().splitlines()[1:]
+    }
+    assert sources <= {"ecb", "ecb_carried_forward"}
+
+
 def _run(script, *args):
     subprocess.run(
         [sys.executable, str(ROOT / "scripts" / script), *args], check=True, capture_output=True
@@ -76,3 +93,32 @@ def test_close_calendar_script_reproduces_the_committed_seed(tmp_path):
 def test_free_email_script_reproduces_the_committed_seed(tmp_path):
     _run("build_free_email_domains.py", "--out", str(tmp_path / "fe.csv"))
     assert (tmp_path / "fe.csv").read_bytes() == (SEEDS / "free_email_domains.csv").read_bytes()
+
+
+def test_fx_offline_walk_is_seeded_and_labeled(tmp_path):
+    outputs = []
+    for name in ("a.csv", "b.csv"):
+        _run("fetch_fx.py", "--offline", "--config", str(CONFIG), "--out", str(tmp_path / name))
+        outputs.append((tmp_path / name).read_text())
+    assert outputs[0] == outputs[1]
+    rows = outputs[0].splitlines()[1:]
+    assert {row.rsplit(",", 1)[1] for row in rows} == {"simulated"}
+    assert rows[0].startswith("2023-01-01,EUR,") and rows[-1].startswith("2026-09-30,GBP,")
+
+
+def test_fx_offline_walk_never_overwrites_the_committed_seed():
+    before = (SEEDS / "fx_rates.csv").read_bytes()
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "fetch_fx.py"),
+            "--offline",
+            "--config",
+            str(CONFIG),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "must not be committed" in result.stderr
+    assert (SEEDS / "fx_rates.csv").read_bytes() == before

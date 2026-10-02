@@ -32,7 +32,7 @@ Enterprise contracts have two sources, recorded as `enterprise_source`:
 - `plg`: a self-serve tailnet whose seats reach `enterprise.lead_seat_threshold` becomes a lead; a configured share closes after a lag. Its Salesforce opportunity has `lead_source` `Product Qualified Lead`.
 - `direct`: a direct-sales account (`enterprise.direct_sales_accounts`) enters Salesforce as a lead with `lead_source` `Inbound` or `Outbound`, and its product tailnet is created on the signing date.
 
-At seed 42 the default config closes 60 contracts in the window (30 PLG, 30 direct). Contracts renew or end at term, and may expand mid-term.
+At seed 42 the default config closes 62 contracts in the window (32 PLG, 30 direct). Contracts renew or end at term, and may expand mid-term.
 
 Trials and free Personal plans receive no invoices. Enterprise invoices cover one contract year at a time, on signing and each anniversary, with net 30 terms. Contracts longer than one year are not billed upfront. A mid-term expansion is invoiced on its date, prorated to the next anniversary. An involuntary churn with an unpaid invoice creates an adjustment credit note with reason `uncollectible`. Tax is zero. Each line is rounded half up to cents; invoice subtotals sum rounded lines. Daily allocation puts the residual on the final service day.
 
@@ -50,7 +50,7 @@ Nonprofit discount is 50%, as a separate negative line linked to its discounted 
 
 The generator writes clean answer-key tables before injecting source defects: `truth_mrr_monthly`, `truth_revenue_monthly`, `truth_identity`, and `defect_manifest`, plus `truth_enterprise_contracts`, which records every contract event. dbt audit models are the only SQL allowed to read truth.
 
-Six defects are planted: D01 duplicate Stripe customer, D03 internal tailnets, D05 late refunds and credit notes, D06 duplicate Stripe invoice sync, D09 soft deletes, and D13 Stripe test-mode rows. No other defect codes are generated, and config validation rejects settings for any other code.
+Six defects are planted: D01 duplicate Stripe customer, D03 internal tailnets, D05 late refunds and credit notes, D06 duplicate Stripe invoice sync, D09 soft deletes, and D13 Stripe test-mode rows. No other defect codes are generated.
 
 ## 4. Metrics and finance definitions
 

@@ -15,7 +15,9 @@ from generator.clock import US_PER_DAY, US_PER_SECOND
 from generator.ids import machine_key_hash, make_ids
 from generator.lifecycle import CHANGE_SOURCE, SIGNUP, Trigger
 from generator.population import (
+    CURRENCIES,
     FIRST_NAMES,
+    KIND_CHILD,
     KIND_TRIAL,
     LAST_NAMES,
     WORK_LOCAL_FORMATS,
@@ -155,7 +157,7 @@ def _tailnets(sim, ids):
     creator_user_personal = ids.personal_user[np.flatnonzero(p.user_is_creator)]
     company = b.company[bi]
     company_name = np.array(sim.pop.company_name, object)[company]
-    name = company_name
+    name = np.where(b.kind[bi] == KIND_CHILD, company_name + " (2)", company_name)
     p_created = cal.epoch_us(p.created_day, p.created_sec)
     b_created = cal.epoch_us(b.created_day, b.created_sec)
     trial = business & (b.kind[bi] == KIND_TRIAL)
@@ -177,7 +179,9 @@ def _tailnets(sim, ids):
         "price_version": np.where(version == 4, "v4", "v3").astype(object),
         "trial_started_at": _masked(b_created[bi], trial),
         "trial_ended_at": _masked(trial_end, trial & (ts >= trial_end)),
-        "currency": np.full(ts.size, "USD", object),
+        "currency": np.array(CURRENCIES, object)[
+            np.where(personal, p.currency[pi], b.currency[bi])
+        ],
         "is_nonprofit": business & b.nonprofit[bi],
         "deleted_at": _masked(np.zeros(ts.size, np.int64), np.zeros(ts.size, bool)),
         **_history(sim, "tailnets", key, ts),

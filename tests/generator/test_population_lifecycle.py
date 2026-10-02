@@ -60,8 +60,8 @@ def test_logged_transitions_follow_data_edges_and_keep_legacy_terms(ci_result):
     conversion = tr["trigger"] == Trigger.TRIAL_CONVERT
     assert np.all(tr["to_version"][conversion & (tr["day"] >= boundary)] == 4)
     assert np.all(tr["to_version"][conversion & (tr["day"] < boundary)] == 3)
-    personal = tr["domain"] == 0
-    assert set(tr["trigger"][personal].tolist()) == {Trigger.SIGNUP_PERSONAL}  # free, never billed
+    assert np.all(tr["day"][tr["trigger"] == Trigger.PLUS_UPGRADE] < boundary)
+    assert np.all(tr["day"][tr["trigger"] == Trigger.PLUS_RETIREMENT] >= boundary)
     migrating = tr["trigger"] == Trigger.MIGRATION_VOLUNTARY
     assert np.all(tr["from_version"][migrating] == 3)
     assert np.all(tr["to_version"][migrating] == 4)
@@ -83,7 +83,7 @@ def test_logged_transitions_follow_data_edges_and_keep_legacy_terms(ci_result):
     assert np.any(tr["trigger"] == Trigger.REACTIVATION)
 
 
-def test_dunning_is_recorded_once_per_episode(ci_result):
+def test_dunning_and_retirement_are_recorded_once_per_episode(ci_result):
     sim = ci_result.sim
     tr = sim.transitions.arrays()
     order = np.lexsort((tr["sec"], tr["day"], tr["tailnet"], tr["domain"]))
@@ -97,6 +97,9 @@ def test_dunning_is_recorded_once_per_episode(ci_result):
         elif trigger in (Trigger.PAYMENT_RECOVERED, Trigger.DUNNING_EXPIRED):
             assert key in episodes
             assert 1 <= int(tr["day"][i]) - episodes.pop(key) <= sim.config.churn.dunning_days
+    retire = tr["trigger"] == Trigger.PLUS_RETIREMENT
+    assert np.all(tr["day"][retire] < sim.v4_day + sim.config.personal.plus_retirement_window_days)
+    assert np.all(tr["to_state"][retire] == State.PERSONAL_FREE)
 
 
 def test_trial_crossing_v4_boundary_converts_on_current_terms():

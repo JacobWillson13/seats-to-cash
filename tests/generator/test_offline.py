@@ -11,7 +11,7 @@ from generator.__main__ import main
 
 from .conftest import CONFIG, ROOT
 
-SEED_BUILDERS = ("build_close_calendar", "build_free_email_domains", "make seeds")
+SEED_BUILDERS = ("fetch_fx", "build_close_calendar", "build_free_email_domains", "make seeds")
 NETWORK_MODULES = {"urllib", "http", "socket", "requests", "httpx", "ftplib", "smtplib"}
 
 

@@ -20,7 +20,7 @@ Status: Accepted
 
 Status: Accepted
 
-The committed `unit_amount_usd` values in `seeds/price_book.csv` are the single price authority, and USD is the only currency: the price book loader rejects any other `unit_amount_<currency>` column. Existing subscriptions retain their recorded price ID through sale-window changes. No source or mart hardcodes list prices. Pre-v4 (v3) prices are illustrative.
+The committed `unit_amount_usd` values in `seeds/price_book.csv` are the single price authority, and USD is the only currency: config sets `population.currencies` to USD only and validation rejects any other nonzero share. Existing subscriptions retain their recorded price ID through sale-window changes. No source or mart hardcodes list prices. Pre-v4 (v3) prices are illustrative.
 
 ## ADR-004: DuckDB first, Snowflake compatible
 
@@ -62,7 +62,7 @@ Recognize v3 usage in its service month, v4 seats over the billed calendar days,
 
 Status: Accepted
 
-Only D01 duplicate Stripe customer, D03 internal tailnets, D05 late refunds and credit notes, D06 duplicate Stripe sync, D09 soft deletes, and D13 Stripe test-mode rows are planted. Defects are introduced after clean answer-key generation and carry a manifest record. D03 is generated with the population (internal tailnets on `wirefern.example` with a 100% discount) rather than injected later. Config has a rate key for each of the other five and validation rejects keys for any other defect code.
+Only D01 duplicate Stripe customer, D03 internal tailnets, D05 late refunds and credit notes, D06 duplicate Stripe sync, D09 soft deletes, and D13 Stripe test-mode rows are planted. Defects are introduced after clean answer-key generation and carry a manifest record. D03 is generated with the population (internal tailnets on `wirefern.example` with a 100% discount) rather than injected later. Config also carries rate keys for other defect codes; they are disabled at 0, nothing injects them, and validation rejects a nonzero rate.
 
 ## ADR-011: Provisional invoice policy
 
@@ -74,13 +74,15 @@ Invoice lines round half up to cents; subtotal sums rounded lines and tax is zer
 
 Status: Accepted
 
-Scope is set by features: plans, defects, metrics, and outputs. Raw tables the generator already writes and tests stay, even when no mart needs them (for example Orb `plans`, `prices`, `subscription_quantity_changes`, `events`, and `daily_line_item_revenue`, and Salesforce `lead` and `user`). Every landed table is documented in `SCHEMAS.md` and staged by dbt; the marts read only what the story needs. Features outside the project scope have no code path, and config validation rejects their settings by name.
+Scope is set by features: plans, defects, metrics, and outputs. Raw tables the generator already writes and tests stay, even when no mart needs them (for example Orb `plans`, `prices`, `subscription_quantity_changes`, `events`, and `daily_line_item_revenue`, and Salesforce `lead` and `user`). Every landed table is documented in `SCHEMAS.md` and staged by dbt; the marts read only what the story needs. Bring-to-work facts (shared machine keys between personal and business tailnets) are kept as data.
+
+Features outside the project scope keep their generator code but are disabled in config: every switch is 0 (or USD only for currencies), and `SimulationConfig.disabled_settings()` makes validation reject a nonzero value. The disabled switches are listed in the config comments and in `SCHEMAS.md`; columns they would populate stay in the table contracts with constant or null values.
 
 ## ADR-013: Two enterprise sources
 
 Status: Accepted
 
-Enterprise contracts come from product-led growth and from direct sales. A PLG tailnet that reaches `enterprise.lead_seat_threshold` seats becomes a lead and closes at `enterprise.lead_to_close` after a lag; its opportunity has `lead_source` `Product Qualified Lead`. A direct-sales account (`enterprise.direct_sales_accounts`) appears in Salesforce as a lead with `lead_source` `Inbound` or `Outbound` before any product tailnet exists; its tailnet is created on the signing date. `truth_enterprise_contracts.enterprise_source` records `plg` or `direct` for every contract event. Direct-sales deals are simulated after the PLG cohort in their own pass, so adding them does not change any PLG draw. At seed 42 the default config closes 60 contracts in the window, 30 from each source.
+Enterprise contracts come from product-led growth and from direct sales. A PLG tailnet that reaches `enterprise.lead_seat_threshold` seats becomes a lead and closes at `enterprise.lead_to_close` after a lag; its opportunity has `lead_source` `Product Qualified Lead`. A direct-sales account (`enterprise.direct_sales_accounts`) appears in Salesforce as a lead with `lead_source` `Inbound` or `Outbound` before any product tailnet exists; its tailnet is created on the signing date. `truth_enterprise_contracts.enterprise_source` records `plg` or `direct` for every contract event. Direct-sales deals are simulated after the PLG cohort in their own pass, so adding them does not change any PLG draw. At seed 42 the default config closes 62 contracts in the window: 32 PLG and 30 direct.
 
 ## Dependency log
 

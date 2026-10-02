@@ -18,7 +18,7 @@ seats-to-cash is a focused synthetic finance demo for Wirefern. Its story is ARR
 
 In scope: Personal free; Starter/Premium v3 MAU arrears; Standard/Premium v4 seat advance with proration and auto seats; annual Enterprise from PLG and direct-sales sources; nonprofit discount; USD only; raw_app, raw_orb, raw_stripe, enterprise raw_salesforce, and Finance manual adjustments; defects D01/D03/D05/D06/D09/D13; truth_mrr_monthly, truth_revenue_monthly, truth_identity, defect_manifest, and truth_enterprise_contracts; DuckDB/dbt/Snowflake, closes, Hightouch to Salesforce, LookML, and dashboard SQL.
 
-Features set the scope boundary, not raw tables (ADR-012). Keep every raw table the generator writes and tests, document it in `docs/SCHEMAS.md`, and stage it in dbt; marts use only what the story needs. Features outside this list have no code path, and config validation rejects their settings.
+Features set the scope boundary, not raw tables (ADR-012). Keep every raw table the generator writes and tests, document it in `docs/SCHEMAS.md`, and stage it in dbt; marts use only what the story needs. Features outside this list keep their code but are disabled in config; validation rejects nonzero values for them (ADR-012). Mention them only in config comments and `docs/SCHEMAS.md`.
 
 ## Hard rules
 

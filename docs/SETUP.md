@@ -13,7 +13,7 @@ make data CONFIG=config/ci.yml   # small dataset; `make data SEED=42` for the fu
 
 `make build` (PLAN task c) and `make demo` (task f) are added by later tasks; `make demo` is the DuckDB path and the final README command.
 
-The committed seeds (`price_book.csv`, `plan_entitlements.csv`, `free_email_domains.csv`, `close_calendar.csv`) are ready to use. Generation does not rebuild seeds or need network access; only `make seeds` rebuilds the email-domain and close-calendar seeds.
+The committed seeds in `seeds/` are ready to use. Generation does not rebuild seeds or need network access; only `make seeds` rebuilds them, and it needs the network.
 
 ## Snowflake
 

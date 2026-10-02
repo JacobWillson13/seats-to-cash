@@ -15,6 +15,7 @@ population:
   personal_tailnets: 25000
   business_tailnets: 3000
   signup_growth_monthly: 0.03          # compounding growth in monthly signups
+  currencies: {USD: 1.0, EUR: 0.0, GBP: 0.0}   # DISABLED: USD only; validation rejects nonzero EUR/GBP
   nonprofit_share: 0.04
   internal_tailnets: 40                # D03, created on wirefern.example; generated, not injected
 
@@ -26,6 +27,11 @@ people:
   webmail_domains: {gmail.com: 0.55, yahoo.com: 0.12, outlook.com: 0.10, hotmail.com: 0.08, icloud.com: 0.08, proton.me: 0.04, aol.com: 0.03}
 
 personal:
+  # DISABLED: Personal Plus. Personal is free and never billed; validation rejects nonzero rates.
+  plus_upgrade_monthly: 0.0            # personal_free -> personal_plus, v3 only
+  plus_downgrade_monthly: 0.0          # personal_plus -> personal_free
+  plus_retirement_downgrade_share: 0.0     # share of Personal Plus that moves to free after v4
+  plus_retirement_window_days: 90          # spread over this many days after v4_effective_date
   extra_users_mean: 0.6                # Poisson users beyond the creator, capped by the plan's max_users
   monthly_active_share: 0.70           # chance a personal user is active in a month
 
@@ -67,7 +73,8 @@ activity:
   premium_feature_interest_share: 0.25    # tailnets that want flow_logs, log_streaming, jit_access
   feature_daily_prob: {ssh: 0.35, funnel: 0.05, exit_node: 0.25, subnet_router: 0.30, scim: 0.10, mdm_config: 0.06, posture_integration: 0.05, flow_logs: 0.15, log_streaming: 0.10, jit_access: 0.08}
   feature_attempts_mean: 2.0           # 1 + Poisson(mean - 1) on a day the feature is used
-  tagged_resources_mean: 8             # Poisson; tagged devices per business tailnet
+  tagged_resources_mean: 8             # Poisson, tailnets within the 50 included
+  tagged_resources_overage_mean: 40    # unused while addons.tagged_resource_overage_share is 0
   ephemeral_share: 0.20
   ephemeral_minutes_mean: 180
 
@@ -92,6 +99,11 @@ enterprise:
   term_months: {12: 0.6, 24: 0.3, 36: 0.1}
   discount_range: [0.10, 0.35]         # off the Premium seat price
   min_acv_usd: 10000
+  services_attach_rate: 0.0            # DISABLED: services; validation rejects nonzero
+  services_delivery_lag_days: [7, 45]  # from signing to delivery
+  services_amount_usd: [5000, 40000]   # one-time
+  marketplace_share: {aws: 0.0, azure: 0.0}   # DISABLED: marketplace; validation rejects nonzero
+  multi_tailnet_share: 0.0             # DISABLED: multi-tailnet enterprise; validation rejects nonzero
   renewal_rate: 0.88
   renewal_uplift_mean: 0.08
   expansion_monthly: 0.02
@@ -106,6 +118,10 @@ migration:
   high_uplift_voluntary_multiplier: 0.5
   high_uplift_churn_multiplier: 1.5    # on voluntary churn from v4_effective_date
 
+addons:                                # DISABLED: add-ons; validation rejects nonzero
+  tagged_resource_overage_share: 0.0   # tagged-resource overage billing
+  mullvad_attach_rate: 0.0
+
 payments:
   card_fee_pct: 0.029
   card_fee_fixed_cents: 30
@@ -113,20 +129,31 @@ payments:
   ach_fee_cap_cents: 500
   payout_lag_days: 2
   refund_rate: 0.01
+  marketplace_fee_pct: {aws: 0.0, azure: 0.0}   # DISABLED: marketplace; validation rejects nonzero
 
 sync:
   fivetran_lag_minutes: [5, 240]
   orb_export_lag_hours: [1, 24]
   late_row_lag_days: [3, 20]           # D05 rows land this long after their period's close date
 
-# The six planted defects (SPEC §3, ADR-010). Rates apply to each defect's own denominator.
-# D03 has no rate: it is population.internal_tailnets. No other defect key is accepted.
+# Rates apply to each defect's own denominator (SPEC §3, ADR-010). D03 is
+# population.internal_tailnets. Only D01, D03, D05, D06, D09, and D13 are planted; the other
+# codes are DISABLED and validation rejects a nonzero rate for them.
 defects:
-  D01_duplicate_stripe_customer: 0.03  # Stripe customers duplicated for a tailnet
-  D05_late_rows: 0.05                  # refunds and credit notes that land after the close
-  D06_duplicate_stripe_sync: 0.005     # Stripe invoices synced twice
-  D09_soft_deleted_rows: 0.01          # source rows soft-deleted after load
-  D13_test_mode_rows: 0.002            # Stripe test-mode rows
+  D01_duplicate_stripe_customer: 0.03
+  D02_sf_missing_tailnet_id: 0.0
+  D02_sf_mistyped_tailnet_id: 0.0
+  D04_month_end_early_invoices: 0.0
+  D05_late_rows: 0.05                  # late refunds and credit notes only
+  D06_duplicate_stripe_sync: 0.005
+  D07_marketplace_bad_opp_ref: 0.0
+  D08_crm_amount_includes_nonrecurring: 0.0
+  D09_soft_deleted_rows: 0.01
+  D10_manual_adj_missing_approver: 0.0
+  D10_manual_adj_name_ref: 0.0
+  D11_orphan_charge: 0.0
+  D12_orb_quantity_lag: 0.0
+  D13_test_mode_rows: 0.002
 
 output:
   data_dir: data

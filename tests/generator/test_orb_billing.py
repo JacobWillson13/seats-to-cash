@@ -38,7 +38,7 @@ def _fixture_builder(terms, seat_events, mau_counts):
     builder.book = book
     builder.sim = SimpleNamespace(
         config=SimpleNamespace(extract_date=dt.date(2026, 10, 31)),
-        b=SimpleNamespace(kind=np.zeros(1, np.int8)),
+        b=SimpleNamespace(kind=np.zeros(1, np.int8), tagged_resources=np.zeros(1, np.int32)),
     )
     builder.rows = {name: [] for name in ORB_TABLES}
     builder.terms = terms
@@ -50,6 +50,9 @@ def _fixture_builder(terms, seat_events, mau_counts):
     builder.mau = defaultdict(set)
     for month, count in mau_counts.items():
         builder.mau[0, month] = set(range(count))
+    builder.personal_devices = {}
+    builder.business_devices = {}
+    builder.mullvad = defaultdict(bool)
     builder.discount_price = {
         "nonprofit": next(p for p in book if p.price_id == "disc_nonprofit"),
         "internal": next(p for p in book if p.price_id == "disc_internal"),
@@ -77,6 +80,8 @@ def _term(cal, name, state, version, start, end, *, discount="0"):
         "migrated" if end else None,
         price.price_id,
         "oc_1_0",
+        "USD",
+        "stripe",
         Decimal(discount),
     )
 
@@ -289,13 +294,15 @@ def test_all_orb_contracts_references_and_amounts(ci_orb):
         assert totals[iid] == Decimal(row["subtotal"])
         assert Decimal(row["tax"]) == 0
         assert Decimal(row["total"]) == Decimal(row["subtotal"]) + Decimal(row["tax"])
-        assert row["currency"] == "USD"
-        assert (row["external_sync_id"] is None) == (Decimal(row["total"]) <= 0)
+        if Decimal(row["total"]) == 0:
+            assert row["external_sync_id"] is None
     daily = defaultdict(Decimal)
     for row in tables["daily_line_item_revenue"].to_pylist():
         daily[row["invoice_line_item_id"]] += Decimal(row["recognized_amount"])
     assert {r["id"]: Decimal(r["amount"]) for r in lines} == daily
-    assert {r["status"] for r in tables["invoices"].to_pylist()} <= {"issued", "paid"}
+    assert all(
+        r["external_sync_id"] is None for r in invoices.values() if r["status"] == "external"
+    )
     credits = tables["credit_notes"].to_pylist()
     assert {r["reason"] for r in credits} <= {"uncollectible"}
     transitions = result.sim.transitions.arrays()
@@ -365,17 +372,16 @@ def test_orb_catalog_and_version_history_have_no_future_state(ci_orb):
             timestamps = [row["_exported_at"] for row in history]
             assert timestamps == sorted(set(timestamps))
         changed = next((history for history in versions.values() if len(history) > 1), None)
-        if table_name == "customers":
-            assert changed is None  # customers never change after creation
-            continue
+        if table_name == "customers" and changed is None:
+            continue  # no customer changes while marketplace is disabled
         assert changed is not None
         first = changed[0]
         cutoff = first["_exported_at"]
         visible = [r for r in changed if r["_exported_at"] <= cutoff]
         assert visible == [first]
     for row in tables["customers"].to_pylist():
-        assert row["currency"] == "USD"
-        assert row["payment_provider"] == "stripe" and row["payment_provider_id"]
+        if row["payment_provider"] is None:
+            assert row["payment_provider_id"] is None
 
 
 def test_every_active_v3_and_v4_month_has_its_required_invoice(ci_orb):
@@ -457,7 +463,7 @@ def test_default_enterprise_annual_cadence_and_runtime(default_orb):
             enterprise_invoices[inv["customer_id"]].append(inv)
     checked = 0
     for event in sim.contract_events:
-        if event.kind not in ("close", "renewal") or event.term_months < 24:
+        if event.kind not in ("close", "child", "renewal") or event.term_months < 24:
             continue
         start = sim.cal.dates[event.day]
         anniversary = start.replace(year=start.year + 1)
@@ -492,7 +498,10 @@ def test_default_enterprise_annual_cadence_and_runtime(default_orb):
         ) - dt.timedelta(days=1)
         checked += 1
     assert checked > 0
+    # Marketplace, multi-currency, and add-ons are disabled in config.
+    assert all(inv["status"] in ("issued", "paid") for inv in invoices.values())
     assert all(inv["currency"] == "USD" for inv in invoices.values())
+    assert {line["line_type"] for line in lines} <= {"usage", "fixed", "proration", "discount"}
 
 
 def test_first_day_addition_after_invoice_is_prorated_next_month():
