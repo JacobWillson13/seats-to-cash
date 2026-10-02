@@ -30,7 +30,7 @@ MOVEMENT_COLORS = {
     "expansion": "#1baf7a",
     "reactivation": "#eda100",
     "contraction": "#e87ba4",
-    "churn": "#008300",
+    "churn": "#c0392b",
 }
 SERIES_COLORS = ["#2a78d6", "#eb6834", "#1baf7a"]  # first three slots: safe for all pairs
 SINGLE = "#2a78d6"
