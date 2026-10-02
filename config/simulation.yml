@@ -91,6 +91,7 @@ churn:
   dunning_days: 21
 
 enterprise:
+  direct_sales_accounts: 32            # direct leads, separate from PLG seat-threshold leads
   lead_seat_threshold: 25
   lead_to_close: 0.35
   lead_to_close_lag_days: [30, 120]
@@ -98,6 +99,7 @@ enterprise:
   discount_range: [0.10, 0.35]         # off the Premium seat price
   min_acv_usd: 10000
   services_attach_rate: 0.30
+  services_delivery_lag_days: [7, 45]  # from signing to delivery
   services_amount_usd: [5000, 40000]   # one-time
   marketplace_share: {aws: 0.20, azure: 0.05}
   multi_tailnet_share: 0.15

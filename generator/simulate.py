@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from generator import activity, seats
+from generator import activity, enterprise, seats
 from generator.clock import Calendar, add_months
 from generator.config import SimulationConfig
 from generator.lifecycle import (
@@ -27,7 +27,14 @@ from generator.lifecycle import (
     seat_based,
     simulate_personal,
 )
-from generator.population import CURRENCIES, KIND_CHILD, KIND_INTERNAL, Population
+from generator.population import (
+    CURRENCIES,
+    KIND_CHILD,
+    KIND_DIRECT,
+    KIND_INTERNAL,
+    KIND_TRIAL,
+    Population,
+)
 from generator.reference import FEATURES, Seeds
 from generator.rng import Stream, period_rng
 from generator.world import Columns, Log
@@ -48,7 +55,9 @@ BUSINESS_FIELDS = {
     "low_days": (np.int32, 0), "last_gated_day": (np.int32, -(10**6)),
     "high_uplift": (bool, False), "uplift": (np.float64, np.nan),
     "dunning_day": (np.int32, -1), "dunning_recovers": (bool, False),
-    "lead": (bool, False), "close_day": (np.int32, -1), "term_end_day": (np.int32, -1),
+    "lead": (bool, False), "lead_day": (np.int32, -1), "lead_source": (np.int8, 0),
+    "close_day": (np.int32, -1), "enterprise_source": (np.int8, 0),
+    "term_end_day": (np.int32, -1),
     "term_months": (np.int16, 0), "channel": (np.int8, -1),
     "month_mau": (np.int32, 0), "prev_month_mau": (np.int32, 0),
 }  # fmt: skip
@@ -56,6 +65,7 @@ FROM_POPULATION = (
     "created_day", "created_sec", "kind", "company", "currency", "nonprofit", "personal_first",
     "origin_personal", "shared_machine", "growth_mult", "approval_required", "advanced_interest",
     "premium_interest", "tagged_resources", "ephemeral", "initial_users", "company_size", "creator",
+    "lead_day", "close_day", "lead_source",
 )  # fmt: skip
 
 
@@ -101,11 +111,14 @@ class Simulation:
         self.config, self.seeds, self.pop, self.cal = config, seeds, pop, cal
         self.v4_day = cal.day(config.v4_effective_date)
         self.plan_codes = plan_codes(seeds.price_book)
-        n0 = pop.business.created_day.size
-        self.b = Columns(BUSINESS_FIELDS, capacity=max(16, 2 * n0))
+        n0 = int(np.sum(pop.business.kind != KIND_DIRECT))
+        self.direct_population_start = n0
+        self.b = Columns(BUSINESS_FIELDS, capacity=max(16, 2 * pop.business.created_day.size))
         self.b.append(n0)
         for field in FROM_POPULATION:
-            getattr(self.b, field)[:] = getattr(pop.business, field)
+            getattr(self.b, field)[:] = getattr(pop.business, field)[:n0]
+        self.contract_events: list[enterprise.ContractEvent] = []
+        self.latest_contract: dict[int, enterprise.ContractEvent] = {}
         self.users = Columns(seats.USER_FIELDS, capacity=max(1024, 16 * n0))
         self.transitions = Log({
             "domain": np.int8, "tailnet": np.int32, "day": np.int32, "sec": np.int32,
@@ -269,9 +282,11 @@ class Simulation:
 
     # --- the loop --------------------------------------------------------------------------
 
-    def run_business(self) -> None:
+    def run_business(self, order: np.ndarray | None = None, *, add_month_end: bool = False) -> None:
         seed = self.config.seed
-        order = np.argsort(self.b.created_day, kind="stable")
+        if order is None:
+            order = np.argsort(self.b.created_day, kind="stable")
+        self._next_signup = 0
         for t in range(self.cal.n_days):
             if t == self.cal.month_start[self.cal.month_of[t]]:
                 self.b.prev_month_mau[:] = self.b.month_mau
@@ -291,9 +306,33 @@ class Simulation:
             if t == self.cal.month_end[self.cal.month_of[t]]:
                 b = self.b
                 paying = np.isin(b.state, [*SELF_SERVE, State.ENTERPRISE, State.PAST_DUE])
-                self.stats.paying_month_end[self.cal.month_of[t]] = int(
-                    np.sum(paying & (b.kind != KIND_INTERNAL))
-                )
+                count = int(np.sum(paying & (b.kind != KIND_INTERNAL)))
+                if add_month_end:
+                    self.stats.paying_month_end[self.cal.month_of[t]] += count
+                else:
+                    self.stats.paying_month_end[self.cal.month_of[t]] = count
+
+    def run_direct_sales(self) -> None:
+        """Replay direct deals after PLG with a separate cohort, preserving PLG RNG ordering."""
+        source = self.pop.business
+        count = source.created_day.size - self.direct_population_start
+        if count == 0:
+            return
+        prior = self.b.n
+        saved_state = self.b.state.copy()
+        saved_mau = self.b.month_mau.copy()
+        saved_previous_mau = self.b.prev_month_mau.copy()
+        self.b.state[:prior] = NOT_CREATED
+        idx = self.b.append(count)
+        for field in FROM_POPULATION:
+            getattr(self.b, field)[idx] = getattr(source, field)[self.direct_population_start :]
+        self.b.lead[idx] = True
+        self.b.enterprise_source[idx] = 1
+        order = idx[np.argsort(self.b.created_day[idx], kind="stable")]
+        self.run_business(order, add_month_end=True)
+        self.b.state[:prior] = saved_state
+        self.b.month_mau[:prior] = saved_mau
+        self.b.prev_month_mau[:prior] = saved_previous_mau
 
     def run_personal(self) -> None:
         simulate_personal(self)
@@ -307,17 +346,44 @@ class Simulation:
         if idx.size == 0:
             return
         version = self.version_on(t)
-        trials = idx[b.kind[idx] != KIND_INTERNAL]
+        trials = idx[b.kind[idx] == KIND_TRIAL]
         internal = idx[b.kind[idx] == KIND_INTERNAL]
+        direct = idx[b.kind[idx] == KIND_DIRECT]
         b.trial_version[trials] = version
         b.trial_end_day[trials] = t + self.config.trial.length_days
         self.transition(trials, t, b.created_sec[trials], Trigger.SIGNUP_BUSINESS,
                         State.BUSINESS_TRIAL, version)  # fmt: skip
         self.transition(internal, t, b.created_sec[internal], Trigger.SIGNUP_INTERNAL,
                         State.PREMIUM, version)  # fmt: skip
+        self.transition(direct, t, b.created_sec[direct], Trigger.SIGNUP_DIRECT_ENTERPRISE,
+                        State.ENTERPRISE, version)  # fmt: skip
+        if direct.size:
+            terms = self.draw_terms(rng, direct.size)
+            e = self.config.enterprise
+            channel = rng.choice(
+                3,
+                size=direct.size,
+                p=[
+                    1 - sum(e.marketplace_share.values()),
+                    e.marketplace_share.get("aws", 0.0),
+                    e.marketplace_share.get("azure", 0.0),
+                ],
+            )
+            b.term_months[direct] = terms
+            b.term_end_day[direct] = [self.term_end(t, m) for m in terms]
+            b.channel[direct] = channel
         self._initial_users(idx, t, rng)
         self.rng = rng
         self.ensure_seats(internal, t, b.created_sec[internal], "system")
+        if direct.size:
+            contracted = np.maximum(
+                self.config.enterprise.lead_seat_threshold, b.company_size[direct]
+            )
+            self.set_seats(direct, contracted, t, b.created_sec[direct], "system")
+            enterprise.record(self, direct, t, b.created_sec[direct], "close", rng)
+            spawn = direct[rng.random(direct.size) < self.config.enterprise.multi_tailnet_share]
+            for parent in spawn.tolist():
+                self.request_spawn(parent, int(b.created_sec[parent]) + 1)
 
     def _initial_users(self, idx, t, rng):
         b = self.b
@@ -337,7 +403,7 @@ class Simulation:
             child = int(self.b.append(1)[0])
             for field in ("company", "currency", "nonprofit", "advanced_interest",
                           "premium_interest", "version", "term_end_day", "term_months",
-                          "channel"):  # fmt: skip
+                          "channel", "enterprise_source", "lead_source"):  # fmt: skip
                 getattr(b, field)[child] = getattr(b, field)[parent]
             b.kind[child], b.parent[child] = KIND_CHILD, parent
             b.created_day[child], b.created_sec[child] = t, sec
@@ -352,6 +418,7 @@ class Simulation:
                             b.version[parent])  # fmt: skip
             self._initial_users(np.array([child]), t, rng)
             self.ensure_seats([child], t, sec, "system")
+            enterprise.record(self, [child], t, sec, "child", rng)
         self._spawn_requests.clear()
 
 

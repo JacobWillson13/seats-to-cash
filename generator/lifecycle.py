@@ -11,6 +11,7 @@ from enum import IntEnum
 
 import numpy as np
 
+from generator import enterprise
 from generator.clock import PHASE_LIFECYCLE, daily_probability
 
 
@@ -39,6 +40,7 @@ class Trigger(IntEnum):
     SIGNUP_BUSINESS = 2
     SIGNUP_INTERNAL = 3
     SIGNUP_ENTERPRISE_TAILNET = 4
+    SIGNUP_DIRECT_ENTERPRISE = 24
     PLUS_UPGRADE = 5
     PLUS_DOWNGRADE = 6
     PLUS_RETIREMENT = 7
@@ -83,6 +85,8 @@ TRANSITIONS: tuple[Edge, ...] = (
          ("population.internal_tailnets",)),
     Edge(Trigger.SIGNUP_ENTERPRISE_TAILNET, _s(SIGNUP), _s(State.ENTERPRISE), None,
          ("enterprise.multi_tailnet_share",)),
+    Edge(Trigger.SIGNUP_DIRECT_ENTERPRISE, _s(SIGNUP), _s(State.ENTERPRISE), None,
+         ("enterprise.direct_sales_accounts", "enterprise.lead_to_close_lag_days")),
     Edge(Trigger.PLUS_UPGRADE, _s(State.PERSONAL_FREE), _s(State.PERSONAL_PLUS), "self_serve",
          ("personal.plus_upgrade_monthly",)),
     Edge(Trigger.PLUS_DOWNGRADE, _s(State.PERSONAL_PLUS), _s(State.PERSONAL_FREE), "self_serve",
@@ -135,7 +139,8 @@ ALLOWED = frozenset((e.trigger, s, t) for e in TRANSITIONS for s in e.sources fo
 CHANGE_SOURCE = {e.trigger: e.change_source for e in TRANSITIONS}
 # Transitions that start a plan term; none may start a v3 plan on or after v4_effective_date.
 PLAN_STARTS = frozenset({
-    Trigger.SIGNUP_INTERNAL, Trigger.SIGNUP_ENTERPRISE_TAILNET, Trigger.PLUS_UPGRADE,
+    Trigger.SIGNUP_INTERNAL, Trigger.SIGNUP_ENTERPRISE_TAILNET,
+    Trigger.SIGNUP_DIRECT_ENTERPRISE, Trigger.PLUS_UPGRADE,
     Trigger.TRIAL_CONVERT, Trigger.UPGRADE_STANDARD_PREMIUM, Trigger.UPGRADE_STARTER_PREMIUM,
     Trigger.DOWNGRADE_PREMIUM, Trigger.MIGRATION_VOLUNTARY, Trigger.MIGRATION_FORCED,
     Trigger.REACTIVATION, Trigger.ENTERPRISE_CLOSE, Trigger.ENTERPRISE_RENEWAL,
@@ -300,6 +305,7 @@ def _enterprise(sim, t, rng, sec, done, version_now):
         b.term_end_day[closing] = [sim.term_end(t, m) for m in terms]
         b.channel[closing] = channel
         sim.ensure_seats(closing, t, sec[closing], "system", always_record=True)
+        enterprise.record(sim, closing, t, sec[closing], "close", rng)
         done[closing] = True
         spawn = closing[rng.random(closing.size) < e.multi_tailnet_share]
         for parent in spawn.tolist():
@@ -309,6 +315,7 @@ def _enterprise(sim, t, rng, sec, done, version_now):
     size = np.maximum(b.held, b.occupied + b.pending)
     new_leads = np.flatnonzero(self_serve & ~b.lead & (size >= e.lead_seat_threshold))
     b.lead[new_leads] = True
+    b.lead_day[new_leads] = t
     closes = new_leads[rng.random(new_leads.size) < e.lead_to_close]
     lo, hi = e.lead_to_close_lag_days
     b.close_day[closes] = t + rng.integers(lo, hi + 1, size=closes.size)
@@ -326,6 +333,7 @@ def _enterprise(sim, t, rng, sec, done, version_now):
         terms = sim.draw_terms(rng, kept.size)
         b.term_months[kept] = terms
         b.term_end_day[kept] = [sim.term_end(t, m) for m in terms]
+        enterprise.record(sim, kept, t, sec[kept], "renewal", rng)
         sim.transition(lost, t, sec[lost], Trigger.ENTERPRISE_NONRENEWAL, State.CHURNED,
                        version_now)  # fmt: skip
         sim.go_dormant(lost, t, sec[lost])
@@ -340,6 +348,7 @@ def _enterprise(sim, t, rng, sec, done, version_now):
         sim.transition(grow, t, sec[grow], Trigger.ENTERPRISE_EXPANSION, State.ENTERPRISE,
                        b.version[grow])  # fmt: skip
         sim.set_seats(grow, b.held[grow] + extra.astype(np.int32), t, sec[grow], "system")
+        enterprise.record(sim, grow, t, sec[grow], "expansion", rng)
         done[grow] = True
 
 

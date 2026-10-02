@@ -67,12 +67,13 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = args.out or config.output.data_dir
     result = run(config, seeds, out_dir, defects=not args.no_defects)
     for name, rows in result.row_counts.items():
-        print(f"  raw_app.{name:<26} {rows:>10,} rows")
+        label = name if "." in name else f"app.{name}"
+        print(f"  raw_{label:<30} {rows:>10,} rows")
     for name, seconds in result.timings.items():
         print(f"  {name:<46} {seconds:6.2f}s")
     print(f"  {'total':<46} {sum(result.timings.values()):6.2f}s")
     print(f"generator: wrote {out_dir / 'raw'} and {result.report_path}")
-    print("generator: billing, payments, CRM, and finance stages arrive with PLAN 1.5 to 1.8")
+    print("generator: billing, payments, and finance stages arrive with PLAN 1.5 to 1.8")
     return 0
 
 

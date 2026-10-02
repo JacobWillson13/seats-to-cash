@@ -49,9 +49,9 @@ def test_ci_parquet_is_byte_identical_across_hash_seeds(tmp_path):
     second = tmp_path / "second"
     _generate(first, hash_seed="1")
     _generate(second, hash_seed="987654")
-    files_a = {p.relative_to(first): _hash(p) for p in first.glob("raw/**/*.parquet")}
-    files_b = {p.relative_to(second): _hash(p) for p in second.glob("raw/**/*.parquet")}
-    assert len(files_a) == 8
+    files_a = {p.relative_to(first): _hash(p) for p in first.glob("**/*.parquet")}
+    files_b = {p.relative_to(second): _hash(p) for p in second.glob("**/*.parquet")}
+    assert len(files_a) == 13
     assert files_a == files_b
     assert {p.name: _hash(p) for p in SEED_FILES} == seeds_before
 
@@ -80,5 +80,5 @@ def test_actual_ci_generation_runs_with_network_and_children_blocked(tmp_path):
     out = tmp_path / "offline"
     _generate(out, hash_seed="23", extra_env=env)
     assert marker.read_text() == "active"
-    assert len(list(out.glob("raw/**/*.parquet"))) == 8
+    assert len(list(out.glob("**/*.parquet"))) == 13
     assert {p.name: _hash(p) for p in SEED_FILES} == seeds_before
