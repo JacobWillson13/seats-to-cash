@@ -4,6 +4,29 @@ Updated 2026-10-02 after the focus-scope reconcile. The first audit (commit `98e
 
 ## Progress log
 
+### dbt-done
+
+- **Built:**
+  - 27 staging models. D09 and D13 rows are filtered; D06 is deduplicated by `orb_invoice_id`.
+  - Intermediate: `int_identity` (resolves D01 by email), `int_stripe_customer_map`, `int_invoice_lines`, `int_subscription_terms_monthly`, `int_seats_month_end`, `int_line_revenue_daily`, and `int_months`.
+  - Marts: `fct_mrr_monthly`, `fct_arr_movements` (repricing split, ADR-007), `fct_arr_waterfall`, `fct_revenue_monthly`, `fct_deferred_revenue_rollforward`, `fct_billings_revenue_cash`, and `dim_customer`.
+  - Audits: MRR, revenue, and identity against truth, plus `audit_defect_scorecard`.
+  - `scripts/check_truth_fence.py` and `make build`.
+- **Tests:** `make build` on the default data passes 107 nodes in 13 s.
+  - Reconciliation tests: ARR waterfall, deferred-revenue rollforward, Orb vs. deduped Stripe, and Stripe cash vs. balance transactions.
+  - Audit-must-match tests and an Orb allocation cross-check.
+  - Unit tests for proration and repricing.
+  - `make test-gen` passes 91 tests; `tests/project` passes 2.
+- **Default run (seed 42):**
+  - MRR matches truth on 14,924 of 14,924 tailnet-months; revenue matches on 15,247 of 15,247.
+  - Every planted defect is detected and handled: D01 13/13, D03 40/40, D06 70/70, D09 103/103, D13 80/80.
+  - Closing ARR: Jan 2024 $93,799.92; Jan 2025 $365,660.76; Jan 2026 $1,053,717.36; Sep 2026 $1,641,205.80.
+  - Jan–Sep 2026 movements: new $431,443.68, expansion $426,577.90, repricing $152,995.46, contraction −$96,936.00, churn −$301,373.76, reactivation $33,756.00.
+  - Jan–Sep 2026 totals: billings $1,132,596.21, revenue $983,440.66, net cash $1,108,245.80.
+- **Tags:** the git proxy returns HTTP 403 for tag pushes, so tags exist only locally. To create them after merging:
+  - `git tag generator-done 2b3ce84`
+  - `git tag dbt-done <the commit that adds this entry>`
+
 ### generator-done
 
 - **Built:**
