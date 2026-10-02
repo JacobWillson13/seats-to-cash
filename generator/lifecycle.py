@@ -1,4 +1,4 @@
-"""Tailnet state machine (SPEC 4.2) and the planted mechanisms (SPEC 4.3).
+"""Tailnet state machine and the planted mechanisms behind the generated facts (SPEC §2).
 
 The transition table is data: TRANSITIONS lists every allowed edge with its trigger and the
 config keys that set its rate, and tests check every logged transition against it.
@@ -206,7 +206,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
     v4_era = t >= sim.v4_day
     internal = b.kind == 1
 
-    # Trial end (SPEC 2.4): convert or fall back to Personal.
+    # Trial end: convert or fall back to Personal.
     ending = np.flatnonzero((b.state == State.BUSINESS_TRIAL) & (b.trial_end_day == t))
     if ending.size:
         u = rng.random((2, ending.size))
@@ -216,6 +216,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
         base_tier = State.STANDARD if version_now == 4 else State.STARTER
         target = np.where(premium, State.PREMIUM, base_tier)
         win, lose = ending[converts], ending[~converts]
+        b.convert_day[win] = t
         sim.transition(win, t, sec[win], Trigger.TRIAL_CONVERT, target[converts],
                        version_now)  # fmt: skip
         sim.ensure_seats(win, t, sec[win], "admin")
@@ -224,7 +225,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
         sim.go_dormant(lose, t, sec[lose])
         done[ending] = True
 
-    # Dunning resolves (SPEC 4.2): recovery or involuntary churn.
+    # Dunning resolves: recovery or involuntary churn.
     resolving = np.flatnonzero((b.state == State.PAST_DUE) & (b.dunning_day == t) & ~done)
     if resolving.size:
         ok = b.dunning_recovers[resolving]
@@ -257,7 +258,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
         sim.transition(fail, t, sec[fail], Trigger.PAYMENT_FAILED, State.PAST_DUE, b.version[fail])
         done[fail] = True
 
-        # Voluntary migration to v4, effective on the 1st (SPEC 2.5).
+        # Voluntary migration to v4, effective on the 1st (SPEC §2).
         if v4_era:
             movers = np.flatnonzero(legacy & ~done)
             mult = np.where(
@@ -272,7 +273,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
     _enterprise(sim, t, rng, sec, done, version_now)
     _self_serve_hazards(sim, t, rng, sec, done, version_now)
 
-    # Reactivation: back to the same tier on the current price version (SPEC 2.5).
+    # Reactivation: back to the same tier on the current price version.
     churned = np.flatnonzero(
         (b.state == State.CHURNED) & np.isin(b.prev_state, list(SELF_SERVE)) & ~internal & ~done
     )
@@ -290,7 +291,7 @@ def _enterprise(sim, t, rng, sec, done, version_now):
     internal = b.kind == 1
     self_serve = np.isin(b.state, list(SELF_SERVE)) & ~internal
 
-    # Leads close into contracts after a lag (SPEC 2.6).
+    # PLG leads close into contracts after a lag.
     closing = np.flatnonzero((b.close_day == t) & self_serve & ~done)
     if closing.size:
         terms = sim.draw_terms(rng, closing.size)
@@ -407,7 +408,7 @@ def _self_serve_hazards(sim, t, rng, sec, done, version_now):
 
 def simulate_personal(sim) -> None:
     """Monthly loop over personal tailnets: Personal Plus upgrades, downgrades, the v4
-    retirement, payment failures, and reactivation (SPEC 2.5, 4.2)."""
+    retirement, payment failures, and reactivation. Disabled in config: Personal stays free."""
     from generator.rng import Stream, period_rng
 
     cfg, cal, p = sim.config, sim.cal, sim.pop.personal

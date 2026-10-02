@@ -61,6 +61,32 @@ def test_invalid_config_names_the_problem(write_config, changes, expected):
     assert expected in str(exc.value)
 
 
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"population.currencies": {"USD": 0.9, "EUR": 0.1}},
+        {"personal.plus_upgrade_monthly": 0.002},
+        {"enterprise.services_attach_rate": 0.3},
+        {"enterprise.marketplace_share": {"aws": 0.2, "azure": 0.0}},
+        {"payments.marketplace_fee_pct": {"aws": 0.03, "azure": 0.0}},
+        {"enterprise.multi_tailnet_share": 0.15},
+        {"addons.tagged_resource_overage_share": 0.12},
+        {"addons.mullvad_attach_rate": 0.05},
+        {"defects.D02_sf_missing_tailnet_id": 0.15},
+        {"defects.D12_orb_quantity_lag": 0.02},
+    ],
+)
+def test_disabled_features_reject_nonzero_values(write_config, changes):
+    with pytest.raises(ConfigError, match="disabled in this project's scope and must be 0"):
+        load_config(write_config(changes))
+
+
+def test_default_config_disables_every_out_of_scope_feature():
+    config = load_config(CONFIG)
+    assert config.population.currencies["USD"] == 1
+    assert set(config.disabled_settings().values()) == {0}
+
+
 def test_unreadable_configs_fail_clearly(tmp_path):
     with pytest.raises(ConfigError, match="config file not found"):
         load_config(tmp_path / "nope.yml")

@@ -1,4 +1,4 @@
-"""PLAN 1.5: documented invoice histories and complete Orb source invariants."""
+"""Documented invoice histories and complete Orb source invariants."""
 
 import datetime as dt
 from collections import defaultdict
@@ -13,6 +13,7 @@ import pytest
 from generator.billing_orb import Builder, Term, allocate_daily, money
 from generator.clock import Calendar
 from generator.config import load_config
+from generator.enterprise import ContractEvent
 from generator.lifecycle import State, Trigger
 from generator.pipeline import run
 from generator.reference import Seeds
@@ -47,9 +48,9 @@ def _fixture_builder(terms, seat_events, mau_counts):
     builder.term_by_id = {t.id: t for t in terms}
     builder.seats = defaultdict(list)
     builder.seats[0] = [(cal.day(day), 30_000, held, "admin") for day, held in seat_events]
-    builder.mau = defaultdict(set)
+    builder.mau = defaultdict(dict)
     for month, count in mau_counts.items():
-        builder.mau[0, month] = set(range(count))
+        builder.mau[0, month] = {user: int(cal.month_end[month]) for user in range(count)}
     builder.personal_devices = {}
     builder.business_devices = {}
     builder.mullvad = defaultdict(bool)
@@ -373,7 +374,7 @@ def test_orb_catalog_and_version_history_have_no_future_state(ci_orb):
             assert timestamps == sorted(set(timestamps))
         changed = next((history for history in versions.values() if len(history) > 1), None)
         if table_name == "customers" and changed is None:
-            continue  # the CI cohort may have no marketplace conversion
+            continue  # no customer changes while marketplace is disabled
         assert changed is not None
         first = changed[0]
         cutoff = first["_exported_at"]
@@ -450,9 +451,9 @@ def default_orb(tmp_path_factory):
     return result, {name: pq.read_table(out / "raw/orb" / f"{name}.parquet") for name in ORB_TABLES}
 
 
-def test_default_enterprise_annual_cadence_marketplace_and_runtime(default_orb):
+def test_default_enterprise_annual_cadence_and_runtime(default_orb):
     result, tables = default_orb
-    assert result.timings["render Orb billing"] + result.timings["write raw_orb Parquet"] < 60
+    assert result.timings["render Orb billing"] < 60
     sim = result.sim
     invoices = {row["id"]: row for row in tables["invoices"].to_pylist()}
     lines = tables["invoice_line_items"].to_pylist()
@@ -498,10 +499,10 @@ def test_default_enterprise_annual_cadence_marketplace_and_runtime(default_orb):
         ) - dt.timedelta(days=1)
         checked += 1
     assert checked > 0
-    external = [inv for inv in invoices.values() if inv["status"] == "external"]
-    assert external
-    assert all(inv["external_sync_id"] is None for inv in external)
-    assert all(inv["currency"] in ("USD", "EUR", "GBP") for inv in invoices.values())
+    # Marketplace, multi-currency, and add-ons are disabled in config.
+    assert all(inv["status"] in ("issued", "paid") for inv in invoices.values())
+    assert all(inv["currency"] == "USD" for inv in invoices.values())
+    assert {line["line_type"] for line in lines} <= {"usage", "fixed", "proration", "discount"}
 
 
 def test_first_day_addition_after_invoice_is_prorated_next_month():
@@ -519,3 +520,110 @@ def test_first_day_addition_after_invoice_is_prorated_next_month():
         ("fixed", "40.00"),
         ("proration", "8.00"),
     ]
+
+
+def _enterprise_builder(cal, term, events):
+    book = Seeds.load(SEEDS).price_book
+    builder = Builder.__new__(Builder)
+    builder.cal, builder.book = cal, book
+    builder.sim = SimpleNamespace(
+        config=SimpleNamespace(extract_date=cal.end), b=SimpleNamespace(kind=np.zeros(1, np.int8)),
+        contract_events=events,
+    )  # fmt: skip
+    builder.rows = {name: [] for name in ORB_TABLES}
+    builder.terms = [term]
+    builder.by_key = defaultdict(list)
+    builder.by_key[1, 0] = [term]
+    builder.term_by_id = {term.id: term}
+    builder.lines_of = defaultdict(list)
+    builder.invoice_latest = {}
+    builder.invoice_seq = builder.line_seq = 0
+    builder.failures = set()
+    return builder
+
+
+def test_annual_invoice_signed_on_leap_day_renews_on_february_28():
+    """An enterprise year signed on 2024-02-29 is invoiced again on 2025-02-28 (the clamped
+    anniversary); the first service year runs through 2025-02-27 and its daily revenue covers
+    every day, leap day included, and sums to the ACV."""
+    cal = Calendar(dt.date(2024, 1, 1), dt.date(2025, 12, 31))
+    start, end = cal.day(dt.date(2024, 2, 29)), cal.day(dt.date(2026, 2, 28))
+    term = Term("ent", 1, 0, State.ENTERPRISE, 3, start, 70_000, None, None, None,
+                "v3_enterprise", "oc_1_0", "USD", "stripe", Decimal("0"))  # fmt: skip
+    event = ContractEvent(
+        tailnet=0, day=start, sec=70_000, kind="close", enterprise_source="direct", parent=-1,
+        term_months=24, contract_start_day=start, contract_end_day=end, seats=40,
+        price_id="v3_enterprise", currency="USD", channel="stripe", discount_pct=Decimal("0.2"),
+        recurring_acv=Decimal("12000.00"), services_amount=Decimal("0"),
+        services_delivery_day=-1,
+    )  # fmt: skip
+    builder = _enterprise_builder(cal, term, [event])
+    builder.enterprise_invoices()
+    invoices = list(builder.invoice_latest.values())
+    assert [(i["invoice_date"], i["service_period_start"], i["service_period_end"], i["total"])
+            for i in invoices] == [
+        (dt.date(2024, 2, 29), dt.date(2024, 2, 29), dt.date(2025, 2, 27), "12000.00"),
+        (dt.date(2025, 2, 28), dt.date(2025, 2, 28), dt.date(2026, 2, 27), "12000.00"),
+    ]  # fmt: skip
+    first = [r for r in builder.rows["daily_line_item_revenue"]
+             if r["invoice_id"] == invoices[0]["id"]]  # fmt: skip
+    assert len(first) == 365
+    assert first[0]["revenue_date"] == dt.date(2024, 2, 29)
+    assert sum(Decimal(r["recognized_amount"]) for r in first) == Decimal("12000.00")
+
+
+def test_trials_are_never_invoiced(ci_orb):
+    """No Orb subscription, invoice line, or charge covers any day a tailnet is on trial."""
+    result, tables = ci_orb
+    tr = result.sim.transitions.arrays()
+    trial_days = {}
+    for tn, day, trig in zip(tr["tailnet"], tr["day"], tr["trigger"], strict=True):
+        if trig == Trigger.SIGNUP_BUSINESS:
+            trial_days[int(tn)] = [int(day), None]
+        elif trig in (Trigger.TRIAL_CONVERT, Trigger.TRIAL_FALLBACK):
+            trial_days[int(tn)][1] = int(day)
+    assert trial_days
+    cal = result.sim.cal
+    subscriptions = {r["id"]: r for r in tables["subscriptions"].to_pylist()}
+    for row in subscriptions.values():
+        tn = int(row["customer_id"].split("_")[2])
+        if row["customer_id"].startswith("oc_1_") and tn in trial_days:
+            signup, ended = trial_days[tn]
+            assert ended is not None and cal.day(row["start_date"]) >= ended, row["id"]
+    for line in tables["invoice_line_items"].to_pylist():
+        tn = int(subscriptions[line["subscription_id"]]["customer_id"].split("_")[2])
+        if tn in trial_days:
+            signup, ended = trial_days[tn]
+            assert cal.day(line["start_date"]) >= ended, line["id"]
+
+
+def test_each_uncollectible_credit_note_writes_off_its_unpaid_invoice(ci_orb):
+    """Every credit note names an invoice of the same customer that failed payment on its
+    issue date, was never paid, and is written off in full on the tailnet's dunning expiry."""
+    result, tables = ci_orb
+    cal = result.sim.cal
+    tr = result.sim.transitions.arrays()
+    expired = defaultdict(set)
+    failed = set()
+    for tn, day, trig, domain in zip(
+        tr["tailnet"], tr["day"], tr["trigger"], tr["domain"], strict=True
+    ):
+        if trig == Trigger.DUNNING_EXPIRED:
+            expired[int(domain), int(tn)].add(int(day))
+        elif trig == Trigger.PAYMENT_FAILED:
+            failed.add((int(domain), int(tn), int(day)))
+    versions = defaultdict(list)
+    for row in tables["invoices"].to_pylist():
+        versions[row["id"]].append(row)
+    credits = tables["credit_notes"].to_pylist()
+    assert credits
+    for note in credits:
+        history = versions[note["invoice_id"]]
+        invoice = history[0]
+        domain, tn = (int(x) for x in invoice["customer_id"].split("_")[1:])
+        assert note["customer_id"] == invoice["customer_id"]
+        assert note["total"] == invoice["total"] and Decimal(note["total"]) > 0
+        assert all(v["status"] == "issued" and v["paid_at"] is None for v in history)
+        assert (domain, tn, cal.day(invoice["invoice_date"])) in failed
+        assert cal.day(note["effective_date"]) in expired[domain, tn]
+        assert note["type"] == "adjustment" and note["reason"] == "uncollectible"

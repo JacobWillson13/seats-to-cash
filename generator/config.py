@@ -1,8 +1,7 @@
 """Load and validate the simulation config (config/simulation.yml).
 
-A config file may name a base file with `extends:`; its keys are deep-merged over the base
-(ADR-022). Every problem surfaces as a ConfigError whose message names the file and the
-offending key.
+A config file may name a base file with `extends:`; its keys are deep-merged over the base.
+Every problem surfaces as a ConfigError whose message names the file and the offending key.
 """
 
 from __future__ import annotations
@@ -240,7 +239,7 @@ class Sync(_Section):
 
 
 class Defects(_Section):
-    """Rates per defect denominator (SPEC 5). D03 is population.internal_tailnets."""
+    """Rates per defect denominator (SPEC §3). D03 is population.internal_tailnets."""
 
     D01_duplicate_stripe_customer: Probability
     D02_sf_missing_tailnet_id: Probability
@@ -298,9 +297,43 @@ class SimulationConfig(_Section):
     defects: Defects
     output: Output
 
+    def disabled_settings(self) -> dict[str, float]:
+        """Switches for features outside the project scope; every value must be 0.
+
+        The code paths stay, but these features are off: multi-currency, Personal Plus,
+        services, marketplace, add-ons (tagged resources, Mullvad), multi-tailnet enterprise,
+        and defects other than D01, D03, D05, D06, D09, and D13.
+        """
+        p, e, a, d = self.personal, self.enterprise, self.addons, self.defects
+        settings = {
+            f"population.currencies.{c}": share
+            for c, share in self.population.currencies.items()
+            if c != "USD"
+        }
+        settings |= {
+            "personal.plus_upgrade_monthly": p.plus_upgrade_monthly,
+            "personal.plus_downgrade_monthly": p.plus_downgrade_monthly,
+            "personal.plus_retirement_downgrade_share": p.plus_retirement_downgrade_share,
+            "enterprise.services_attach_rate": e.services_attach_rate,
+            "enterprise.multi_tailnet_share": e.multi_tailnet_share,
+            "addons.tagged_resource_overage_share": a.tagged_resource_overage_share,
+            "addons.mullvad_attach_rate": a.mullvad_attach_rate,
+        }
+        settings |= {f"enterprise.marketplace_share.{k}": v for k, v in e.marketplace_share.items()}
+        settings |= {
+            f"payments.marketplace_fee_pct.{k}": v
+            for k, v in self.payments.marketplace_fee_pct.items()
+        }
+        settings |= {
+            f"defects.{name}": rate
+            for name, rate in d.model_dump().items()
+            if name[:3] not in ("D01", "D05", "D06", "D09", "D13")
+        }
+        return settings
+
     @property
     def forced_migration_effective_date(self) -> dt.date:
-        """The first billing cycle after the legacy deadline (SPEC 2.5)."""
+        """The first billing cycle after the legacy deadline (SPEC §2)."""
         return first_of_next_month(self.legacy_forced_migration_date)
 
     @model_validator(mode="after")
@@ -346,6 +379,14 @@ class SimulationConfig(_Section):
         for name, value in products.items():
             if value > 1:
                 raise ValueError(f"{name} = {value:g}, which is not a probability")
+
+        if enabled := sorted(
+            f"{key} = {value:g}" for key, value in self.disabled_settings().items() if value != 0
+        ):
+            raise ValueError(
+                "these features are disabled in this project's scope and must be 0: "
+                + ", ".join(enabled)
+            )
 
         if self.crm.account_seat_threshold > self.enterprise.lead_seat_threshold:
             raise ValueError(
@@ -411,7 +452,7 @@ def load_config(path: Path | str) -> SimulationConfig:
 
 
 def cross_check(config: SimulationConfig, seeds: Seeds) -> None:
-    """Check values the config duplicates from the seeds (X5) and seed coverage of the window."""
+    """Check values the config duplicates from the seeds and seed coverage of the window."""
     problems = _price_book_problems(config, seeds.price_book)
     day = dt.timedelta(days=1)
 

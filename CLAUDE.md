@@ -16,9 +16,9 @@ seats-to-cash is a focused synthetic finance demo for Wirefern. Its story is ARR
 
 ## Scope
 
-In scope: Personal free; Starter/Premium v3 MAU arrears; Standard/Premium v4 seat advance; annual Enterprise; nonprofit discount; raw_app, five Orb tables, five Stripe tables, enterprise Salesforce accounts/opportunities, Finance manual adjustments; defects D01/D03/D05/D06/D09/D13; truth_mrr_monthly, truth_revenue_monthly, truth_identity, defect_manifest; DuckDB/dbt/Snowflake, closes, Hightouch to Salesforce, LookML, and dashboard SQL.
+In scope: Personal free; Starter/Premium v3 MAU arrears; Standard/Premium v4 seat advance with proration and auto seats; annual Enterprise from PLG and direct-sales sources; nonprofit discount; USD only; raw_app, raw_orb, raw_stripe, enterprise raw_salesforce, and Finance manual adjustments; defects D01/D03/D05/D06/D09/D13; truth_mrr_monthly, truth_revenue_monthly, truth_identity, defect_manifest, and truth_enterprise_contracts; DuckDB/dbt/Snowflake, closes, Hightouch to Salesforce, LookML, and dashboard SQL.
 
-Treat this scope as the project boundary; tests and documentation should describe these sources and outputs.
+Features set the scope boundary, not raw tables (ADR-012). Keep every raw table the generator writes and tests, document it in `docs/SCHEMAS.md`, and stage it in dbt; marts use only what the story needs. Features outside this list keep their code but are disabled in config; validation rejects nonzero values for them (ADR-012). Mention them only in config comments and `docs/SCHEMAS.md`.
 
 ## Hard rules
 
@@ -34,18 +34,22 @@ Treat this scope as the project boundary; tests and documentation should describ
 
 ## Commands
 
-| Command | Purpose |
-|---|---|
-| `make setup` | Install locked dependencies and hooks |
-| `make data SEED=42` | Generate source Parquet and load DuckDB raw schemas |
-| `make test-gen` | Generator invariants, fixtures, determinism, and offline checks |
-| `make lint` | Ruff checks and formatting |
-| `make build` | dbt build on DuckDB |
-| `make close PERIOD=2026-09` | Build and append one as-of close |
-| `make close-history` | Replay April–September 2026 closes |
-| `make snowflake` | Optional Snowflake load and dbt build |
-| `make demo` | Fresh-clone DuckDB demo |
+| Command | Purpose | Available |
+|---|---|---|
+| `make setup` | Install locked dependencies and hooks | now |
+| `make data SEED=42` | Generate source Parquet and load the DuckDB raw schemas | now |
+| `make test-gen` | Generator invariants, fixtures, determinism, and offline checks | now |
+| `make lint` | Ruff checks and formatting | now |
+| `make seeds` | Rebuild the committed email-domain and close-calendar seeds | now |
+| `make build` | dbt build on DuckDB, then the truth-fence check | now |
+| `make test` | Every pytest suite | now |
+| `make close PERIOD=2026-09` | Build and append one as-of close (`FORCE=1` replaces; `TARGET=snowflake`) | now |
+| `make close-history` | Replay April–September 2026 closes, then rebuild (`TARGET=snowflake`) | now |
+| `make dashboard` | Run `analyses/dashboard/*.sql` on DuckDB | now |
+| `make dashboard-snowflake` | Compile the dashboard SQL for Snowflake and print the file paths | now |
+| `make snowflake` | Snowflake load and dbt build, run locally by the owner | now |
+| `make demo` | Fresh-clone DuckDB demo | now |
 
 ## Workflow
 
-Work on `main`. Read the next remaining task in PLAN and its acceptance criteria. Make one task's changes, run required checks, commit, run `git pull --rebase origin main`, then push. Never force-push. Add a STATUS update after each completion tag. Use the repository commit style `<area>: <change>`.
+Work on `main`, unless the session assigns a branch; then work and push there. Read the next remaining task in PLAN and its acceptance criteria. Make one task's changes, run required checks, commit, run `git pull --rebase origin main`, then push. Never force-push. Add a STATUS update after each completion tag. Use the repository commit style `<area>: <change>`.

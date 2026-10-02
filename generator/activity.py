@@ -1,4 +1,4 @@
-"""Activity, feature usage with gated attempts, and device registrations (SPEC 4.3, 4.4).
+"""Activity, feature usage with gated attempts, and device registrations.
 
 Business tailnets get daily rows while live; personal tailnets get monthly rollups only.
 A gated attempt is using a feature the tailnet's current plan doesn't include
@@ -39,6 +39,14 @@ def daily(sim, t, rng_act, rng_feat):
     u.active_month[first_this_month] = month
     np.add.at(b.month_mau, u.tailnet[first_this_month], 1)
     sim.mau.add(user=first_this_month, day=t)
+    # In the month a trial converts, log each user's first activity after the conversion too, so
+    # billing can count only users active on the paid plan (trial usage is never billed).
+    conv = b.convert_day[u.tailnet[active_users]]
+    in_month = (conv >= 0) & (conv < t) & (sim.cal.month_of[np.maximum(conv, 0)] == month)
+    already = np.isin(active_users, first_this_month)
+    relog = active_users[in_month & ~already & ~u.relogged[active_users]]
+    u.relogged[relog] = True
+    sim.mau.add(user=relog, day=t)
 
     tn = np.flatnonzero(live)
     owner = u.tailnet[active_users]

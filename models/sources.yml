@@ -1,0 +1,64 @@
+# Every landed table (docs/SCHEMAS.md). Generated from generator/tables.py.
+version: 2
+
+sources:
+- name: app
+  schema: raw_app
+  description: Product database, Fivetran-landed (raw_app).
+  tables:
+  - name: tailnets
+  - name: users
+  - name: seat_events
+  - name: plan_changes
+  - name: device_registrations
+  - name: tailnet_activity_daily
+  - name: tailnet_activity_monthly
+  - name: feature_usage_daily
+- name: orb
+  schema: raw_orb
+  description: Orb billing export (raw_orb).
+  tables:
+  - name: customers
+  - name: plans
+  - name: prices
+  - name: subscriptions
+  - name: subscription_quantity_changes
+  - name: invoices
+  - name: invoice_line_items
+  - name: credit_notes
+  - name: events
+  - name: daily_line_item_revenue
+- name: stripe
+  schema: raw_stripe
+  description: Stripe, Fivetran-landed (raw_stripe). Amounts in cents.
+  tables:
+  - name: customer
+  - name: invoice
+  - name: charge
+  - name: refund
+  - name: balance_transaction
+- name: salesforce
+  schema: raw_salesforce
+  description: Enterprise Salesforce, Fivetran-landed (raw_salesforce).
+  tables:
+  - name: user
+  - name: account
+    identifier: ACCOUNT  # reserved word in Snowflake; DuckDB matches it case-insensitively
+    quoting:
+      identifier: true
+  - name: lead
+  - name: opportunity
+- name: truth
+  schema: raw_truth
+  description: Generator answer key. Only models/audit may read it.
+  tables:
+  - name: truth_enterprise_contracts
+  - name: truth_mrr_monthly
+  - name: truth_revenue_monthly
+  - name: truth_identity
+  - name: defect_manifest
+- name: finance_close
+  schema: finance_close
+  description: Append-only close ledger written by scripts/close.py (make close).
+  tables:
+  - name: close_ledger

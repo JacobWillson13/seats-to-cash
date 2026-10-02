@@ -1,4 +1,4 @@
-"""PLAN 1.3: population totals, transition rules, and pricing boundaries."""
+"""Population totals, transition rules, and pricing boundaries."""
 
 import datetime as dt
 

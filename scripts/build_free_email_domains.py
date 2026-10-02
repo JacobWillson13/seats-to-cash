@@ -1,4 +1,4 @@
-"""Build seeds/free_email_domains.csv from the free-email-domains package (SPEC 2.4).
+"""Build seeds/free_email_domains.csv from the free-email-domains package.
 
 A signup on one of these domains is a personal tailnet. Run once; the CSV is committed.
 Usage: uv run python scripts/build_free_email_domains.py [--out seeds/free_email_domains.csv]

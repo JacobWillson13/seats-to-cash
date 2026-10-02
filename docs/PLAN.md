@@ -1,39 +1,25 @@
 # Remaining work plan
 
-Work only on `main`. Finish the tasks in order, commit and push after each task, and run `git pull --rebase origin main` before every push. Tags are `generator-done`, `dbt-done`, and `demo-done`.
+Three tiers, in order. Finish each tier completely (tests green, everything pushed) before starting the next; whatever exists at any point must be demoable. Iterate with `config/ci.yml`; run the default config only at tags. After each tag, update `docs/STATUS.md`.
 
-## 4b. Generator remainder
+## Tier 1: the spine
 
-- [ ] **Generator sources and truth**: reduce raw output to in-scope Orb tables; add Stripe customer, invoice, charge, refund, and balance transaction; Salesforce enterprise account and opportunity; the manual-adjustments CSV; the six specified defects; the four answer-key tables; invariant tests; and the DuckDB loader.
-  - Accept: only six defect codes occur; clean generation precedes injection; truth tables match independently reconstructed facts; all foreign keys, amounts, and timestamps validate; offline generation and two-run byte determinism pass; `make data` loads every raw table and prints counts.
-  - Commit, push, then tag `generator-done`.
+- [x] **1. Generator**: Stripe customer, invoice (synced from Orb, metadata `orb_invoice_id` and `payment_source`), charge, refund, and balance_transaction; Salesforce account and opportunity; `truth_mrr_monthly`, `truth_revenue_monthly`, `truth_identity`, and `defect_manifest`; D01, D03, D06, D09, and D13 recorded in the manifest; a DuckDB loader behind `make data`.
+  - Accept: truth tables match facts rebuilt independently from the raw sources; the manifest has only planted codes and every record exists; the determinism test passes; `make data` loads every raw schema. Tag `generator-done`.
+- [x] **2. dbt on DuckDB** (`profiles.yml` at the repo root): staging for every landed table with D09 and D13 filters and D06 dedupe; internal tailnets (D03) excluded from finance marts; `int_identity` (resolves D01), `int_invoice_lines`, `int_subscription_terms_monthly`; `dim_customer`, `fct_mrr_monthly`, `fct_arr_movements` (with repricing), `fct_revenue_monthly`, `fct_deferred_revenue_rollforward`, `fct_billings_revenue_cash`; `audit_mrr_vs_truth`, `audit_defect_scorecard`, and `scripts/check_truth_fence.py`.
+  - Accept: the ARR waterfall closes every month; the deferred revenue rollforward ties; Orb invoice totals equal deduped Stripe totals; Stripe charges minus refunds minus fees equal balance-transaction net; unit tests for proration and the repricing cases pass; `make build` passes. Tag `dbt-done`.
+- [x] **3. `make snowflake`**: read `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_PRIVATE_KEY_PATH` from `.env`, load the raw tables with `write_pandas`, and run `dbt build --target snowflake`. The owner runs it locally; exact steps in SETUP.
+- [x] **4. Dashboard and README**: `analyses/dashboard/*.sql` in Snowflake syntax for ARR trend, ARR waterfall by movement type, billings vs. revenue vs. cash, deferred revenue, and the defect scorecard; README with real numbers from a default DuckDB run. Tag `demo-v1`.
 
-## 4c. dbt on DuckDB
+## Tier 2: stack and finance depth
 
-- [ ] **Sources and staging**: dbt project, DuckDB/Snowflake profiles, source declarations and staging for every in-scope table. Every staging model honors `as_of_ts` using source load time for append-only rows and creation time for entities. Add shared seeds and cross-database macros.
-  - Accept: `dbt deps`, `dbt debug`, staging key tests, deleted/test-mode filtering, and as-of fixtures pass.
-- [ ] **Identity and finance intermediates**: `int_identity`, `int_invoice_lines`, and `int_subscription_terms_monthly`.
-  - Accept: D01 resolves to one Stripe customer per tailnet; line classification and monthly subscription terms reconcile to source facts.
-- [ ] **Finance marts and audits**: `dim_customer`, `fct_mrr_monthly`, `fct_arr_movements`, `fct_revenue_monthly`, `fct_deferred_revenue_rollforward`, `fct_billings_revenue_cash`, `audit_mrr_vs_truth`, and `audit_defect_scorecard`.
-  - Accept: monthly ARR waterfall closes; MRR matches truth to the cent outside manifested defect rows; invoice totals tie to deduplicated Stripe; charges less refunds and fees tie to balance-transaction net; deferred revenue ties; truth-fence check passes.
-- [ ] **dbt tests and CI**: unit tests for proration, price-volume repricing, and a 2024-02-29 annual invoice; GitHub Actions builds a small DuckDB configuration.
-  - Accept: `make build` and required SQL lint pass locally and in CI. Commit, push, tag `dbt-done`.
+- [x] **5. Migration exposure and account signals**: `fct_migration_exposure`; `fct_account_signals` (salesforce_account_id, tailnet_id, arr_usd, seats_held, seat_utilization, migration_risk_tier, sync_eligible); a migration-exposure dashboard query.
+- [x] **6. LookML**: `lookml/` views for `fct_mrr_monthly` and `fct_arr_movements` plus one explore, parsed with `lkml` in a test.
+- [x] **7. Close process**: D05 late refunds and credit notes; `as_of_ts` filters in staging; `make close PERIOD=YYYY-MM` and `make close-history` (2026-04 through 2026-09); `fct_close_ledger` and `fct_restatements`; a restatements dashboard query.
+- [x] **8. CI**: a GitHub Actions workflow running `make test-gen` and `dbt build` on DuckDB with `config/ci.yml`. Update the README and tag `demo-done`.
 
-## 4d. Close and outputs
+## Tier 3: if time remains
 
-- [ ] **Close history and restatements**: `make close PERIOD=YYYY-MM`, `make close-history` for 2026-04 through 2026-09, `fct_close_ledger`, and `fct_restatements` with late-row reasons.
-  - Accept: late refunds or credit notes restate affected periods; re-closing without `FORCE=1` is refused.
-- [ ] **Migration exposure and Salesforce signals**: `fct_migration_exposure` and `fct_account_signals` with required fields and eligibility.
-  - Accept: projected MRR and risk tiers are reproducible; a local sync dry run includes only eligible accounts.
-- [ ] **LookML**: views for MRR and ARR movements and one explore.
-  - Accept: `lkml` parses all LookML files.
-
-## 4e. Snowflake
-
-- [ ] **Snowflake run**: if `.env` contains `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_PRIVATE_KEY_PATH`, load Parquet with `write_pandas` and run `dbt build --target snowflake`; otherwise record the skip in `docs/STATUS.md` and continue.
-  - Accept: Snowflake dbt build passes when credentials are available; no credentials or private keys enter git.
-
-## 4f. Dashboard and README
-
-- [ ] **Dashboard SQL and README**: one query per tile for ARR trend, ARR waterfall, billings/revenue/cash, deferred revenue, restatements, defect scorecard, and migration exposure. Rewrite README with project story, measured results, DuckDB `make demo`, architecture, decisions, and first questions.
-  - Accept: every query runs on DuckDB; README contains only measured numbers and working local commands. Commit, push, tag `demo-done`.
+- [ ] **9. Skipped by decision:** the `manual_adjustments` CSV, shaped for a Fivetran-synced Google Sheet.
+- [x] **10.** A unit test for an annual invoice spanning 2024-02-29.
+- [x] **11.** The audit's test gaps: a direct test that trials get no invoices, and an uncollectible credit-note check per unpaid invoice.

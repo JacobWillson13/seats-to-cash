@@ -1,4 +1,4 @@
-"""Calibration report: monthly lifecycle counts and each planted mechanism (SPEC 4.3) measured
+"""Calibration report: monthly lifecycle counts and each planted mechanism measured
 on the clean simulation next to its configured value. Ratios more than 25% off are flagged,
 not tuned away."""
 
@@ -264,10 +264,10 @@ def build_report(sim, devices, timings: dict[str, float], row_counts: dict[str, 
         "",
         "## Totals",
         "",
-        f"- Paying tailnets ever: {business_paid.size:,} business (SPEC 4.5: about 1,000) "
+        f"- Paying tailnets ever: {business_paid.size:,} business (target about 1,000) "
         f"plus {plus_ever.size:,} Personal Plus.",
         f"- Enterprise contracts closed: {enterprise_close_count} "
-        f"(SPEC 4.5: about 60), with {int(np.sum(trig == Trigger.SIGNUP_ENTERPRISE_TAILNET))} "
+        f"(target about 60), with {int(np.sum(trig == Trigger.SIGNUP_ENTERPRISE_TAILNET))} "
         "extra tailnets for multi-tailnet contracts.",
         f"- Enterprise lead funnel: {int(b.lead.sum())} reached "
         f"{cfg.enterprise.lead_seat_threshold} seats; "

@@ -1,6 +1,6 @@
 """Render the simulation into raw_app tables, the product database as Fivetran lands it.
 
-`tailnets` and `users` are version logs in Fivetran history mode (ADR-018); everything else is
+`tailnets` and `users` are version logs in Fivetran history mode (ADR-008); everything else is
 append-only. Load timestamps are the business timestamp plus a sync lag from config.
 """
 

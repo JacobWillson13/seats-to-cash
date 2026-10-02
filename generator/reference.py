@@ -38,7 +38,7 @@ def _rows(path: Path, columns: tuple[str, ...]) -> list[dict[str, str]]:
 
 
 def load_public_email_domains(path: Path) -> frozenset[str]:
-    """Public webmail domains: a signup on one of these is a personal tailnet (SPEC 2.4)."""
+    """Public webmail domains: a signup on one of these is a personal tailnet."""
     domains = [row["domain"] for row in _rows(path, ("domain",))]
     if any(d != d.strip().lower() or not d for d in domains):
         raise SeedError(f"{path}: domains must be lowercase with no surrounding spaces")

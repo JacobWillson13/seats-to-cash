@@ -1,0 +1,79 @@
+version: 2
+
+models:
+  - name: fct_mrr_monthly
+    description: Month-end MRR and ARR per paid subscription (internal tailnets excluded).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [tailnet_id, month]
+    columns:
+      - name: tailnet_id
+        data_tests: [not_null]
+      - name: month
+        data_tests: [not_null]
+      - name: mrr_usd
+        data_tests: [not_null]
+      - name: billing_basis
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [mau, seat, contract]
+  - name: fct_arr_movements
+    description: ARR movements by tailnet, month, and type; the waterfall closes exactly.
+    columns:
+      - name: movement_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [new, expansion, repricing, contraction, churn, reactivation]
+  - name: fct_arr_waterfall
+    columns:
+      - name: month
+        data_tests: [unique, not_null]
+  - name: fct_revenue_monthly
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [tailnet_id, month]
+  - name: fct_deferred_revenue_rollforward
+    columns:
+      - name: month
+        data_tests: [unique, not_null]
+  - name: fct_billings_revenue_cash
+    columns:
+      - name: month
+        data_tests: [unique, not_null]
+  - name: dim_customer
+    columns:
+      - name: tailnet_id
+        data_tests: [unique, not_null]
+      - name: orb_customer_id
+        data_tests: [unique, not_null]
+  - name: fct_migration_exposure
+    description: Legacy v3 tailnets at the latest month end with projected v4 MRR and a risk tier.
+    columns:
+      - name: tailnet_id
+        data_tests: [unique, not_null]
+      - name: migration_risk_tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [high, medium, low]
+      - name: projected_v4_mrr_usd
+        data_tests: [not_null]
+  - name: fct_account_signals
+    description: Salesforce account signals for the Hightouch upsert on Tailnet_ID__c.
+    columns:
+      - name: salesforce_account_id
+        data_tests: [unique, not_null]
+      - name: account_name
+        description: Salesforce Account Name; required when Hightouch creates the account.
+        data_tests: [not_null]
+      - name: tailnet_id
+        data_tests: [unique, not_null]
+      - name: migration_risk_tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [high, medium, low, none]

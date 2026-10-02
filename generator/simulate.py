@@ -2,7 +2,7 @@
 
 Business state lives in numpy arrays ordered by business ordinal (creation order). Each day
 advances every tailnet at once with vectorized draws from one generator per (stream, day),
-in a fixed order of phases (ADR-023): activation, departures, admin seat actions, logins,
+in a fixed order of phases: activation, departures, admin seat actions, logins,
 activity, then lifecycle transitions. Same-day events get time-of-day windows in that same
 order, so seat ledgers read consistently.
 """
@@ -58,7 +58,7 @@ BUSINESS_FIELDS = {
     "lead": (bool, False), "lead_day": (np.int32, -1), "lead_source": (np.int8, 0),
     "close_day": (np.int32, -1), "enterprise_source": (np.int8, 0),
     "term_end_day": (np.int32, -1),
-    "term_months": (np.int16, 0), "channel": (np.int8, -1),
+    "term_months": (np.int16, 0), "channel": (np.int8, -1), "convert_day": (np.int32, -1),
     "month_mau": (np.int32, 0), "prev_month_mau": (np.int32, 0),
 }  # fmt: skip
 FROM_POPULATION = (
@@ -70,7 +70,7 @@ FROM_POPULATION = (
 
 
 class Stats:
-    """Exposure and event counters for the calibration report (SPEC 4.3)."""
+    """Exposure and event counters for the calibration report."""
 
     def __init__(self, n_months: int):
         self.churn_exposure_days = np.zeros((2, 2), np.int64)  # [low][high uplift]
@@ -245,7 +245,7 @@ class Simulation:
         b.low_days[idx] = 0
 
     def update_uplift(self, idx):
-        """Projected v4 bill vs current v3 bill for legacy tailnets (SPEC 4.3, 8.5)."""
+        """Projected v4 bill vs current v3 bill for legacy tailnets."""
         if idx.size == 0:
             return
         b, book = self.b, self.seeds.price_book
@@ -395,7 +395,7 @@ class Simulation:
         seats.add_users(self, invited, t, b.created_sec[invited], rng, earliest_offset=1)
 
     def _spawn(self, t):
-        """Extra tailnets for multi-tailnet enterprise contracts (SPEC 2.6)."""
+        """Extra tailnets for multi-tailnet enterprise contracts (disabled in config)."""
         if not self._spawn_requests:
             return
         b, cfg, rng = self.b, self.config, self.rng

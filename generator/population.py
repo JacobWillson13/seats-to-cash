@@ -1,6 +1,6 @@
-"""People, companies, and tailnet signups (SPEC 2.4, 4.4, 4.5).
+"""People, companies, and tailnet signups.
 
-Every entity created here draws from its own entity stream (ADR-023), so its attributes don't
+Every entity created here draws from its own entity stream (ADR-001), so its attributes don't
 depend on how many other entities exist. Population counts in config are totals over the whole
 simulation, from sim_start_date through end_date. Internal tailnets (D03) come on top of
 `population.business_tailnets`, which counts trial signups only.
@@ -280,7 +280,7 @@ def build_population(
         rows.append(row)
     # Direct rows append after the existing PLG ordinals so their identities remain stable.
 
-    # Bring-to-work: link personal-first creators to an earlier personal tailnet (SPEC 4.4).
+    # Bring-to-work: link personal-first creators to an earlier personal tailnet.
     pool = [i for i in range(n_p) if personal.employed[i]]
     pool_days = [int(personal.created_day[i]) for i in pool]
     company_name, company_domain = [], []

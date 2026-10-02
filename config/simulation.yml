@@ -3,7 +3,7 @@
 # config/ci.yml is a 10% overlay of this file for CI.
 
 seed: 42
-sim_start_date: 2023-01-01             # burn-in year starts here (ADR-019)
+sim_start_date: 2023-01-01             # burn-in year starts here (SPEC §1)
 reporting_start_date: 2024-01-01       # marts report from here; duplicates dbt var reporting_start_date
 end_date: 2026-09-30                   # business events stop here
 extract_date: 2026-10-31               # load timestamps can run to here (late rows for September)
@@ -15,7 +15,7 @@ population:
   personal_tailnets: 25000
   business_tailnets: 3000
   signup_growth_monthly: 0.03          # compounding growth in monthly signups
-  currencies: {USD: 0.85, EUR: 0.10, GBP: 0.05}
+  currencies: {USD: 1.0, EUR: 0.0, GBP: 0.0}   # DISABLED: USD only; validation rejects nonzero EUR/GBP
   nonprofit_share: 0.04
   internal_tailnets: 40                # D03, created on wirefern.example; generated, not injected
 
@@ -27,9 +27,10 @@ people:
   webmail_domains: {gmail.com: 0.55, yahoo.com: 0.12, outlook.com: 0.10, hotmail.com: 0.08, icloud.com: 0.08, proton.me: 0.04, aol.com: 0.03}
 
 personal:
-  plus_upgrade_monthly: 0.002          # personal_free -> personal_plus, v3 only
-  plus_downgrade_monthly: 0.01         # personal_plus -> personal_free
-  plus_retirement_downgrade_share: 0.60    # share of Personal Plus that moves to free after v4
+  # DISABLED: Personal Plus. Personal is free and never billed; validation rejects nonzero rates.
+  plus_upgrade_monthly: 0.0            # personal_free -> personal_plus, v3 only
+  plus_downgrade_monthly: 0.0          # personal_plus -> personal_free
+  plus_retirement_downgrade_share: 0.0     # share of Personal Plus that moves to free after v4
   plus_retirement_window_days: 90          # spread over this many days after v4_effective_date
   extra_users_mean: 0.6                # Poisson users beyond the creator, capped by the plan's max_users
   monthly_active_share: 0.70           # chance a personal user is active in a month
@@ -46,7 +47,7 @@ seats:
   company_size_lognormal: {mean: 3.7, sigma: 1.1}    # employees, median about 40; caps a tailnet's users
   user_departure_monthly: 0.03         # per logged-in user; vacates a seat
   growth_gamma_shape: 1.0              # per-tailnet growth multiplier ~ Gamma(shape), mean 1
-  bring_to_work_growth_multiplier: 1.5 # bring-to-work tailnets add users faster (SPEC 4.3)
+  bring_to_work_growth_multiplier: 1.5 # bring-to-work tailnets add users faster
   removal_monthly: 0.05                # base seat-removal hazard (admin trims seats or inactive users)
   headroom_seats_mean: 1.5             # extra seats held above occupied
   auto_seat_daily_prob_when_full: 0.02
@@ -73,7 +74,7 @@ activity:
   feature_daily_prob: {ssh: 0.35, funnel: 0.05, exit_node: 0.25, subnet_router: 0.30, scim: 0.10, mdm_config: 0.06, posture_integration: 0.05, flow_logs: 0.15, log_streaming: 0.10, jit_access: 0.08}
   feature_attempts_mean: 2.0           # 1 + Poisson(mean - 1) on a day the feature is used
   tagged_resources_mean: 8             # Poisson, tailnets within the 50 included
-  tagged_resources_overage_mean: 40    # Poisson above 50, for addons.tagged_resource_overage_share
+  tagged_resources_overage_mean: 40    # unused while addons.tagged_resource_overage_share is 0
   ephemeral_share: 0.20
   ephemeral_minutes_mean: 180
 
@@ -98,11 +99,11 @@ enterprise:
   term_months: {12: 0.6, 24: 0.3, 36: 0.1}
   discount_range: [0.10, 0.35]         # off the Premium seat price
   min_acv_usd: 10000
-  services_attach_rate: 0.30
+  services_attach_rate: 0.0            # DISABLED: services; validation rejects nonzero
   services_delivery_lag_days: [7, 45]  # from signing to delivery
   services_amount_usd: [5000, 40000]   # one-time
-  marketplace_share: {aws: 0.20, azure: 0.05}
-  multi_tailnet_share: 0.15
+  marketplace_share: {aws: 0.0, azure: 0.0}   # DISABLED: marketplace; validation rejects nonzero
+  multi_tailnet_share: 0.0             # DISABLED: multi-tailnet enterprise; validation rejects nonzero
   renewal_rate: 0.88
   renewal_uplift_mean: 0.08
   expansion_monthly: 0.02
@@ -117,9 +118,9 @@ migration:
   high_uplift_voluntary_multiplier: 0.5
   high_uplift_churn_multiplier: 1.5    # on voluntary churn from v4_effective_date
 
-addons:
-  tagged_resource_overage_share: 0.12
-  mullvad_attach_rate: 0.05
+addons:                                # DISABLED: add-ons; validation rejects nonzero
+  tagged_resource_overage_share: 0.0   # tagged-resource overage billing
+  mullvad_attach_rate: 0.0
 
 payments:
   card_fee_pct: 0.029
@@ -128,28 +129,30 @@ payments:
   ach_fee_cap_cents: 500
   payout_lag_days: 2
   refund_rate: 0.01
-  marketplace_fee_pct: {aws: 0.03, azure: 0.03}
+  marketplace_fee_pct: {aws: 0.0, azure: 0.0}   # DISABLED: marketplace; validation rejects nonzero
 
 sync:
   fivetran_lag_minutes: [5, 240]
   orb_export_lag_hours: [1, 24]
   late_row_lag_days: [3, 20]           # D05 rows land this long after their period's close date
 
-# Rates apply to each defect's denominator (SPEC 5). D03 is population.internal_tailnets.
+# Rates apply to each defect's own denominator (SPEC §3, ADR-010). D03 is
+# population.internal_tailnets. Only D01, D03, D05, D06, D09, and D13 are planted; the other
+# codes are DISABLED and validation rejects a nonzero rate for them.
 defects:
   D01_duplicate_stripe_customer: 0.03
-  D02_sf_missing_tailnet_id: 0.15
-  D02_sf_mistyped_tailnet_id: 0.03
-  D04_month_end_early_invoices: 0.05
-  D05_late_rows: 0.05
+  D02_sf_missing_tailnet_id: 0.0
+  D02_sf_mistyped_tailnet_id: 0.0
+  D04_month_end_early_invoices: 0.0
+  D05_late_rows: 0.20                  # late refunds and credit notes only (ADR-023)
   D06_duplicate_stripe_sync: 0.005
-  D07_marketplace_bad_opp_ref: 0.20
-  D08_crm_amount_includes_nonrecurring: 0.25
+  D07_marketplace_bad_opp_ref: 0.0
+  D08_crm_amount_includes_nonrecurring: 0.0
   D09_soft_deleted_rows: 0.01
-  D10_manual_adj_missing_approver: 0.10
-  D10_manual_adj_name_ref: 0.20
-  D11_orphan_charge: 0.003
-  D12_orb_quantity_lag: 0.02
+  D10_manual_adj_missing_approver: 0.0
+  D10_manual_adj_name_ref: 0.0
+  D11_orphan_charge: 0.0
+  D12_orb_quantity_lag: 0.0
   D13_test_mode_rows: 0.002
 
 output:

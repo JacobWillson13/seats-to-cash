@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from collections import defaultdict
 from decimal import Decimal
 
 import numpy as np
@@ -55,6 +56,7 @@ def render(sim):
         )
     }
     accounts, leads, opps = [], [], []
+    latest_acv = {e.tailnet: e.recurring_acv for e in sim.contract_events if e.kind == "close"}
     for i in np.flatnonzero(b.lead & (b.lead_day >= 0)).tolist():
         lead_day = int(b.lead_day[i])
         if lead_day >= cal.n_days:
@@ -151,6 +153,43 @@ def render(sim):
                     "_fivetran_synced": closed + 60_000_000,
                 }
             )
+    # Renewals and expansions are their own Closed Won opportunities. recurring_arr__c is the
+    # contract's total annual value after the event, so the latest won opportunity carries the
+    # current enterprise ARR (ADR-016).
+    later = defaultdict(int)
+    for e in sim.contract_events:
+        if e.kind not in ("renewal", "expansion"):
+            continue
+        later[e.tailnet] += 1
+        prior = latest_acv[e.tailnet]
+        latest_acv[e.tailnet] = e.recurring_acv
+        closed = int(cal.epoch_us(e.day, e.sec))
+        company = int(b.company[e.tailnet])
+        opps.append(
+            {
+                "id": f"0068{e.tailnet:08d}{later[e.tailnet]:03d}",
+                "account_id": f"001{e.tailnet:012d}",
+                "name": f"{pop.company_name[company]} {e.kind.title()}",
+                "type": "Renewal" if e.kind == "renewal" else "Expansion",
+                "stage_name": "Closed Won",
+                "is_closed": True,
+                "is_won": True,
+                "amount": e.recurring_acv if e.kind == "renewal" else e.recurring_acv - prior,
+                "close_date": cal.dates[e.day],
+                "created_date": closed,
+                "last_modified_date": closed,
+                "probability": Decimal("1.00"),
+                "owner_id": OWNER,
+                "lead_source": SOURCES[int(b.lead_source[e.tailnet])],
+                "contract_term_months__c": e.term_months,
+                "contract_start_date__c": cal.dates[e.contract_start_day],
+                "recurring_arr__c": e.recurring_acv,
+                "purchase_channel__c": e.channel,
+                "marketplace_offer_id__c": None,
+                "is_deleted": False,
+                "_fivetran_synced": closed + 60_000_000,
+            }
+        )
     rep = {
         "id": OWNER,
         "name": "Wirefern Sales",

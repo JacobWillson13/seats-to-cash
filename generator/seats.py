@@ -1,4 +1,4 @@
-"""Users, approvals, logins, and the seat ledger with auto seats (SPEC 2.2).
+"""Users, approvals, logins, and the seat ledger with auto seats (SPEC §2).
 
 Seat mechanics, per business tailnet and day:
 - Users depart at `seats.user_departure_monthly`, vacating seats; seats held don't change.
@@ -12,7 +12,7 @@ Seat mechanics, per business tailnet and day:
   auto seat. Separately, a full seat-based tailnet gets an unplanned login (an auto-provisioned
   user) with `seats.auto_seat_daily_prob_when_full`.
 Utilization is occupied / held on seat plans, and users active in the last 30 days / logged-in
-users on v3 plans (the legacy proxy, SPEC 8.5).
+users on v3 plans (the legacy proxy).
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ USER_FIELDS = {
     "removed_day": (np.int32, -1), "removed_sec": (np.int32, 0), "expire_day": (np.int32, -1),
     "devices": (np.int8, 1), "propensity": (np.float32, 1.0),
     "last_active_day": (np.int32, -(10**6)), "active_month": (np.int16, -1),
+    "relogged": (bool, False),
     "auto_seat": (bool, False), "unplanned": (bool, False),
 }  # fmt: skip
 
