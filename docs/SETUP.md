@@ -29,22 +29,15 @@ node --version
 ### 1.3 Free email domain seed
 
 ```bash
-mkdir -p seeds
-uv run python -c "
-import csv
-from free_email_domains import whitelist
-with open('seeds/free_email_domains.csv', 'w', newline='') as f:
-    w = csv.writer(f)
-    w.writerow(['domain'])
-    for d in sorted(whitelist):
-        w.writerow([d])
-"
+uv run python scripts/build_free_email_domains.py
 wc -l seeds/free_email_domains.csv
 ```
 
+`make seeds` rebuilds all three generated seeds (this one, the close calendar, and FX rates). Their outputs are committed, so a fresh clone never needs to run it.
+
 ### 1.4 FX rates
 
-`scripts/fetch_fx.py` (task 1.2) downloads the ECB historical reference rates (https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip), keeps EUR and GBP, converts to USD per unit, and writes `seeds/fx_rates.csv`. Commit the CSV so the demo never needs the network.
+`scripts/fetch_fx.py` (task 1.2) downloads the ECB historical reference rates (https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip), keeps EUR and GBP, converts to USD per unit, and writes `seeds/fx_rates.csv` with a row for every day from `sim_start_date` through `extract_date`. Days past the last ECB publication, or every day with `--offline`, come from a seeded random walk labeled `simulated`. Commit the CSV so the demo never needs the network.
 
 ### 1.5 Environment file
 

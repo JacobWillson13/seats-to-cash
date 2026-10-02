@@ -169,6 +169,14 @@ Decision: Every invented domain uses `.example` (RFC 2606), including the compan
 Alternatives considered: `.test` or `.invalid` (less readable); Faker's domains filtered against a blocklist (can't prove a name isn't real).
 Consequences: No generated company domain can resolve to a real business. Company domains are generated so they never collide with the free-email list.
 
+## ADR-022: config/ci.yml is an overlay, not a copy
+
+Status: Accepted
+Context: CI needs the same simulation at 10% scale. A full copy of `simulation.yml` would drift every time a rate changes.
+Decision: A config file may name a base file with `extends:`; its keys are deep-merged over the base (mappings merge, everything else replaces). `config/ci.yml` overrides only the three population counts.
+Alternatives considered: A full copy (drifts); a `--scale` CLI flag (hides which counts scale and which don't).
+Consequences: Rate changes in `simulation.yml` reach CI automatically. A test asserts that `ci.yml` differs from the base only in population counts.
+
 ## Dependency log
 
 | Dependency | Why |

@@ -1,0 +1,8 @@
+# CI config: simulation.yml with population sizes cut to 10% (ADR-022).
+# Keys here are deep-merged over the base file; everything else is inherited.
+extends: simulation.yml
+
+population:
+  personal_tailnets: 2500
+  business_tailnets: 300
+  internal_tailnets: 4

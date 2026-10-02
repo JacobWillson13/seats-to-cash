@@ -280,7 +280,7 @@ Column types for both tables are defined in `generator/tables.py`.
 - `price_book.csv`: committed; the single source of truth for prices. Fixed local list prices in `unit_amount_usd`, `unit_amount_eur`, and `unit_amount_gbp` (ADR-020). `disc_internal` is the 100% discount for D03 internal tailnets.
 - `plan_entitlements.csv`: committed; plan_code, price_version, feature, entitled. One row per plan, version, and feature. A gated attempt is using a feature whose row says `entitled = false` for the tailnet's current plan. Trials use Premium's rows for the price version current at trial start.
 - `free_email_domains.csv`: one column, `domain`. Built once by the SETUP command from the public HubSpot-derived list.
-- `fx_rates.csv` (a dbt seed, not a raw table): rate_date, currency, usd_per_unit, source. Built once by `scripts/fetch_fx.py` from ECB reference rates (EUR base, converted to USD per unit). Fallback: seeded random walk, labeled `source = simulated`.
+- `fx_rates.csv` (a dbt seed, not a raw table): rate_date, currency, usd_per_unit, source. One row per calendar day from `sim_start_date` through `extract_date` for EUR and GBP (USD is 1). `source` is `ecb` (published that day), `ecb_carried_forward` (weekend or ECB holiday), or `simulated` (no ECB data: offline, or past the last published date). Built once by `scripts/fetch_fx.py` from ECB reference rates (EUR base, converted to USD per unit). Fallback: seeded random walk, labeled `source = simulated`.
 - `close_calendar.csv`: period, close_date (5th business day of the following month, weekends only, no holidays). Committed; built by `scripts/build_close_calendar.py`. The generator reads it to place D05 rows.
 
 ## raw_truth (answer key; audit models only)

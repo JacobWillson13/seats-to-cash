@@ -57,6 +57,7 @@ Config and shared data: `config/simulation.yml` (generator parameters; `config/c
 | Command | Does |
 |---|---|
 | `make setup` | uv sync, dbt deps (once `dbt_project.yml` exists), pre-commit install |
+| `make seeds` | rebuild the committed seeds: free email domains, close calendar, FX rates (network) |
 | `make data SEED=42` | run the generator, write Parquet, load DuckDB raw schemas |
 | `make test-gen` | pytest invariants on generator output |
 | `make build` | `dbt build` on DuckDB (models and tests) |
