@@ -4,8 +4,9 @@ models:
   - name: fct_mrr_monthly
     description: Month-end MRR and ARR per paid subscription (internal tailnets excluded).
     data_tests:
-      - dbt_utils_free_unique_combination:
-          columns: [tailnet_id, month]
+      - unique_combination:
+          arguments:
+            columns: [tailnet_id, month]
     columns:
       - name: tailnet_id
         data_tests: [not_null]
@@ -32,8 +33,9 @@ models:
         data_tests: [unique, not_null]
   - name: fct_revenue_monthly
     data_tests:
-      - dbt_utils_free_unique_combination:
-          columns: [tailnet_id, month]
+      - unique_combination:
+          arguments:
+            columns: [tailnet_id, month]
   - name: fct_deferred_revenue_rollforward
     columns:
       - name: month
