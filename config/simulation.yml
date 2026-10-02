@@ -1,13 +1,15 @@
 # Wirefern simulation config.
 # All rates are illustrative defaults. Tune freely, but record big changes in docs/DECISIONS.md.
-# config/ci.yml should copy this file with population sizes cut to 10%.
+# config/ci.yml is a 10% overlay of this file for CI.
 
 seed: 42
-start_date: 2024-01-01
-end_date: 2026-09-30
-reporting_tz: America/Los_Angeles
-v4_effective_date: 2026-04-08
-legacy_forced_migration_date: 2027-04-08
+sim_start_date: 2023-01-01             # burn-in year starts here (ADR-019)
+reporting_start_date: 2024-01-01       # marts report from here; duplicates dbt var reporting_start_date
+end_date: 2026-09-30                   # business events stop here
+extract_date: 2026-10-31               # load timestamps can run to here (late rows for September)
+reporting_tz: America/Los_Angeles      # duplicates dbt var reporting_tz
+v4_effective_date: 2026-04-08          # must match price book valid_from for v4 rows
+legacy_forced_migration_date: 2027-04-08   # forced migrations take effect the next 1st (2027-05-01)
 
 population:
   personal_tailnets: 25000
@@ -15,13 +17,19 @@ population:
   signup_growth_monthly: 0.03          # compounding growth in monthly signups
   currencies: {USD: 0.85, EUR: 0.10, GBP: 0.05}
   nonprofit_share: 0.04
-  internal_tailnets: 40                # D03, created on wirefern.com
+  internal_tailnets: 40                # D03, created on wirefern.example; generated, not injected
 
 people:
   employed_share: 0.65
   personal_first_share: 0.30           # business creators who ran a personal tailnet first
   same_machine_share: 0.70             # of those, share whose machine registers to both tailnets
   email_localpart_reuse: 0.40          # share reusing the same local part on personal and work email
+
+personal:
+  plus_upgrade_monthly: 0.002          # personal_free -> personal_plus, v3 only
+  plus_downgrade_monthly: 0.01         # personal_plus -> personal_free
+  plus_retirement_downgrade_share: 0.60    # share of Personal Plus that moves to free after v4
+  plus_retirement_window_days: 90          # spread over this many days after v4_effective_date
 
 trial:
   length_days: 14
@@ -32,37 +40,50 @@ trial:
 seats:
   initial_users_lognormal: {mean: 1.6, sigma: 0.9}   # median about 5 users
   monthly_user_growth: 0.04
+  removal_monthly: 0.05                # base seat-removal hazard
   headroom_seats_mean: 1.5             # extra seats held above occupied
   auto_seat_daily_prob_when_full: 0.02
   low_utilization_threshold: 0.60
   low_utilization_days: 60
-  low_utilization_hazard_multiplier: 3.0
+  low_utilization_hazard_multiplier: 3.0   # on seat removal and voluntary churn
 
 upgrades:
   standard_to_premium_monthly: 0.01
-  gated_feature_multiplier: 4.0
+  starter_to_premium_monthly: 0.008    # v3
+  premium_to_standard_monthly: 0.004   # to standard (v4) or starter (v3)
+  gated_feature_multiplier: 4.0        # on both upgrade hazards
 
 churn:
   voluntary_monthly: 0.015
-  reactivation_monthly: 0.02
-  payment_failure_rate: 0.04
+  reactivation_monthly: 0.02           # back to the same tier, current price version
+  payment_failure_rate: 0.04           # per invoice
   dunning_recovery_rate: 0.70
   dunning_days: 21
 
 enterprise:
   lead_seat_threshold: 25
   lead_to_close: 0.35
+  lead_to_close_lag_days: [30, 120]
   term_months: {12: 0.6, 24: 0.3, 36: 0.1}
+  discount_range: [0.10, 0.35]         # off the Premium seat price
+  min_acv_usd: 10000
   services_attach_rate: 0.30
+  services_amount_usd: [5000, 40000]   # one-time
   marketplace_share: {aws: 0.20, azure: 0.05}
   multi_tailnet_share: 0.15
-  discount_range: [0.10, 0.35]
+  renewal_rate: 0.88
+  renewal_uplift_mean: 0.08
+  expansion_monthly: 0.02
+  expansion_seat_pct_mean: 0.15
+
+crm:
+  account_seat_threshold: 10           # business tailnets at or above this get a Salesforce account
 
 migration:
   voluntary_monthly_hazard: 0.04
   high_uplift_threshold: 0.40
   high_uplift_voluntary_multiplier: 0.5
-  high_uplift_churn_multiplier: 1.5
+  high_uplift_churn_multiplier: 1.5    # on voluntary churn from v4_effective_date
 
 addons:
   tagged_resource_overage_share: 0.12
@@ -82,6 +103,7 @@ sync:
   orb_export_lag_hours: [1, 24]
   late_row_lag_days: [3, 20]           # D05 rows land this long after their period's close date
 
+# Rates apply to each defect's denominator (SPEC 5). D03 is population.internal_tailnets.
 defects:
   D01_duplicate_stripe_customer: 0.03
   D02_sf_missing_tailnet_id: 0.15

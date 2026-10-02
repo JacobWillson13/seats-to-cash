@@ -45,7 +45,7 @@ The defect the suite misses, and why: {{one or two sentences}}.
 
 ```bash
 git clone {{REPO_URL}} && cd seats-to-cash
-make demo        # about 5 minutes: generate data, build, test, score, render the report
+make demo        # under 10 minutes: generate data, build, test, score, render the report
 ```
 
 Requires uv and Node. See `docs/SETUP.md`.

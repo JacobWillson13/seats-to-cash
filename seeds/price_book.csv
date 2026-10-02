@@ -1,14 +1,15 @@
-price_id,plan_code,plan_name,price_version,billing_basis,item,unit_amount_usd,package_size,free_units,max_users,discount_pct,cadence,billing_timing,valid_from,valid_to,channel,notes
-v3_personal,personal,Personal,v3,free,seat,0.00,,,3,,monthly,in_advance,2024-01-01,2026-04-07,self_serve,
-v3_personal_plus,personal_plus,Personal Plus,v3,flat,flat,5.00,,,6,,monthly,in_advance,2024-01-01,2026-04-07,self_serve,illustrative price
-v3_starter,starter,Starter,v3,mau,active_user,6.00,,3,,,monthly,in_arrears,2024-01-01,2026-04-07,self_serve,illustrative price; first 3 active users free
-v3_premium,premium,Premium,v3,mau,active_user,18.00,,3,,,monthly,in_arrears,2024-01-01,2026-04-07,self_serve,illustrative basis; first 3 active users free
-v3_enterprise,enterprise,Enterprise,v3,contract,enterprise_platform,,,,,,annual,in_advance,2024-01-01,2026-04-07,sales,priced per contract
-v4_personal,personal,Personal,v4,free,seat,0.00,,,6,,monthly,in_advance,2026-04-08,,self_serve,
-v4_standard,standard,Standard,v4,seat,seat,8.00,,,,,monthly,in_advance,2026-04-08,,self_serve,
-v4_premium,premium,Premium,v4,seat,seat,18.00,,,,,monthly,in_advance,2026-04-08,,self_serve,
-v4_enterprise,enterprise,Enterprise,v4,contract,enterprise_platform,,,,,,annual,in_advance,2026-04-08,,sales,priced per contract
-v4_tagged_resource,addon,Tagged resources,v4,unit,tagged_resource,1.00,,50,,,monthly,in_advance,2026-04-08,,self_serve,first 50 included
-all_mullvad,addon,Mullvad,all,package,mullvad_bundle,5.00,5,,,,monthly,in_advance,2024-01-01,,self_serve,per 5 devices
-ps_services,services,Professional services,all,one_time,services,,,,,,one_time,in_advance,2024-01-01,,sales,priced per contract
-disc_nonprofit,discount,Nonprofit and education,all,discount,discount,,,,,0.50,,,2024-01-01,,all,illustrative rate
+price_id,plan_code,plan_name,price_version,billing_basis,item,unit_amount_usd,unit_amount_eur,unit_amount_gbp,package_size,free_units,max_users,discount_pct,cadence,billing_timing,valid_from,valid_to,channel,notes
+v3_personal,personal,Personal,v3,free,seat,0.00,0.00,0.00,,,3,,monthly,in_advance,2023-01-01,2026-04-07,self_serve,
+v3_personal_plus,personal_plus,Personal Plus,v3,flat,flat,5.00,4.00,4.00,,,6,,monthly,in_advance,2023-01-01,2026-04-07,self_serve,illustrative price
+v3_starter,starter,Starter,v3,mau,active_user,6.00,5.00,5.00,,3,,,monthly,in_arrears,2023-01-01,2026-04-07,self_serve,illustrative price; first 3 active users free
+v3_premium,premium,Premium,v3,mau,active_user,18.00,15.00,15.00,,3,,,monthly,in_arrears,2023-01-01,2026-04-07,self_serve,illustrative basis; first 3 active users free
+v3_enterprise,enterprise,Enterprise,v3,contract,enterprise_platform,,,,,,,,annual,in_advance,2023-01-01,2026-04-07,sales,priced per contract
+v4_personal,personal,Personal,v4,free,seat,0.00,0.00,0.00,,,6,,monthly,in_advance,2026-04-08,,self_serve,
+v4_standard,standard,Standard,v4,seat,seat,8.00,7.00,7.00,,,,,monthly,in_advance,2026-04-08,,self_serve,
+v4_premium,premium,Premium,v4,seat,seat,18.00,15.00,15.00,,,,,monthly,in_advance,2026-04-08,,self_serve,
+v4_enterprise,enterprise,Enterprise,v4,contract,enterprise_platform,,,,,,,,annual,in_advance,2026-04-08,,sales,priced per contract
+v4_tagged_resource,addon,Tagged resources,v4,unit,tagged_resource,1.00,1.00,1.00,,50,,,monthly,in_advance,2026-04-08,,self_serve,first 50 included
+all_mullvad,addon,Mullvad,all,package,mullvad_bundle,5.00,4.00,4.00,5,,,,monthly,in_advance,2023-01-01,,self_serve,per 5 devices
+ps_services,services,Professional services,all,one_time,services,,,,,,,,one_time,in_advance,2023-01-01,,sales,priced per contract
+disc_nonprofit,discount,Nonprofit and education,all,discount,discount,,,,,,,0.50,,,2023-01-01,,all,illustrative rate
+disc_internal,discount,Internal,all,discount,discount,,,,,,,1.00,,,2023-01-01,,all,D03 internal tailnets on wirefern.example

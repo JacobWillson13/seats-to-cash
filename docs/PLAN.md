@@ -1,6 +1,6 @@
 # PLAN: seats-to-cash
 
-Four days, 8 to 10 focused hours each. Work top to bottom. A task is done only when its acceptance criteria pass and `make build` is green.
+Four days, 8 to 10 focused hours each. Work top to bottom. A task is done only when its acceptance criteria pass and `make build` is green. In Phase 1, before dbt exists, the gate is `make test-gen` plus the task's acceptance checks; `make build` applies from task 2.1.
 
 Priority tags: **[M]** must ship, **[S]** should ship, **[C]** could ship.
 
@@ -10,7 +10,7 @@ Priority tags: **[M]** must ship, **[S]** should ship, **[C]** could ship.
 
 ## Phase 0: Pre-flight (1 hour, before Day 1)
 
-- [ ] 0.1 [M] Create the GitHub repo `seats-to-cash` (private while building, public at the end) and copy these files in.
+- [x] 0.1 [M] Create the GitHub repo `seats-to-cash` (private while building, public at the end) and copy these files in.
 - [ ] 0.2 [M] Install the local toolchain (SETUP section 1).
 - [ ] 0.3 [S] Create the Salesforce Developer Edition, Hightouch, and Fivetran accounts now so signup approvals don't block Day 3. Do not start the Snowflake trial yet; its 30-day clock should run through your interviews.
 - [ ] 0.4 [M] Keep Wirefern or pick another name. Search it first to confirm it isn't a real company.
@@ -23,8 +23,8 @@ Kickoff prompt for Claude Code:
 
 - [ ] 1.1 [M] Scaffold: uv project, `generator/` package, Makefile targets `setup`, `data`, and `test-gen`, pre-commit with ruff, `.gitignore`, `.env.example`.
   - Accept: `make setup` works on a fresh clone and `python -m generator --help` prints usage.
-- [ ] 1.2 [M] Config and seeds: a pydantic model for `config/simulation.yml`; a price book loader; `seeds/free_email_domains.csv` (SETUP 1.3); `scripts/fetch_fx.py` writing `seeds/fx_rates.csv`, with a seeded random-walk fallback.
-  - Accept: an invalid config fails with a clear message; a price lookup by (plan_code, date) returns v3 on 2026-04-07 and v4 on 2026-04-08.
+- [ ] 1.2 [M] Config and seeds: a pydantic model for `config/simulation.yml` that cross-checks duplicated values (price book dates, forced migration date); `config/ci.yml` at 10% scale; a price book loader with `list_price(plan_code, date)` for new sales and `price(price_id)` for existing subscriptions; loaders for `seeds/plan_entitlements.csv`; `seeds/free_email_domains.csv` (SETUP 1.3); `scripts/fetch_fx.py` writing `seeds/fx_rates.csv` from 2023-01-01, with a seeded random-walk fallback; `scripts/build_close_calendar.py` writing `seeds/close_calendar.csv`.
+  - Accept: an invalid config fails with a clear message; a price lookup by (plan_code, date) returns v3 on 2026-04-07 and v4 on 2026-04-08; the close calendar has every period from 2023-01 through 2026-09 on the 5th weekday of the following month.
 - [ ] 1.3 [M] Population and lifecycle: people, companies, domains, and tailnets; the state machine in SPEC 4.2; the planted mechanisms in SPEC 4.3.
   - Accept: monthly counts of signups, trials, conversions, and churn print as a table and look plausible; the bring-to-work share is near the config value.
 - [ ] 1.4 [M] Seats and activity: users, approvals, logins, the seat ledger with auto seats, daily activity, feature usage with gated attempts, and device registrations with machine keys.
@@ -33,14 +33,14 @@ Kickoff prompt for Claude Code:
   - Accept: lines sum to subtotals; a hand-built case (a seat added on the 16th of a 30-day month) prorates to exactly 15/30 of the seat price.
 - [ ] 1.6 [M] Stripe: customers, synced invoices with metadata, invoice lines, card and ACH charges, failures and retries, refunds, balance transactions with fees, and daily payouts.
   - Accept: charges minus refunds minus fees equals the sum of balance transaction net; every non-external Orb invoice with total > 0 has exactly one Stripe invoice.
-- [ ] 1.7 [S] Salesforce: reps, products, accounts for business tailnets with 10+ seats or enterprise contracts, and opportunities (new, expansion, renewal, lost) with line items.
+- [ ] 1.7 [S] Salesforce: reps, products, accounts for business tailnets with `crm.account_seat_threshold` (10) or more seats or enterprise contracts, and opportunities (new, expansion, renewal, lost) with line items.
   - Accept: every enterprise Orb subscription has a Closed Won opportunity.
-- [ ] 1.8 [M] Finance: monthly marketplace disbursements net of fees, the manual adjustments sheet, and the close calendar.
-- [ ] 1.9 [M] Defects: inject D01 to D13 at config rates after clean generation, and write `defect_manifest`.
-  - Accept: manifest counts are within 10% of config rates; `--no-defects` produces a clean dataset for debugging.
+- [ ] 1.8 [M] Finance: monthly marketplace disbursements net of fees, and the manual adjustments sheet (Parquet plus the CSV export). The close calendar is a seed from task 1.2.
+- [ ] 1.9 [M] Defects: inject D01, D02, and D04 to D13 at config rates after clean generation, and write `defect_manifest`. D03 is generated in the population; the manifest lists its internal tailnet ids.
+  - Accept: manifest counts are within 10% of rate x denominator (SPEC 5), with a floor of plus or minus 3 rows; `--no-defects` produces a clean dataset for debugging and sets `internal_tailnets` to 0.
 - [ ] 1.10 [M] Answer key and invariants: write `raw_truth` tables from the clean simulation; pytest covers every invariant in SPEC 4.6.
   - Accept: `make test-gen` is green; two runs with SEED=42 produce identical file hashes.
-- [ ] 1.11 [M] Loader: Parquet into the DuckDB raw schemas; `make data SEED=42` runs end to end.
+- [ ] 1.11 [M] Loader: Parquet into the DuckDB raw schemas; `make data SEED=42` runs end to end. Regenerate the column tables in SCHEMAS.md from `generator/tables.py` so they can't drift.
   - Accept: finishes in under 5 minutes and prints row counts per table. Hand-check five customers against the answer key (one v4 seat, one v3 MAU, one migrated, one enterprise, one marketplace) and record the results under this task.
 
 ## Phase 2, Day 2: Core finance models
@@ -51,8 +51,8 @@ Kickoff prompt:
 
 - [ ] 2.1 [M] dbt init: `dbt_project.yml` with the vars from SPEC 7 and 8 (policy defaults, `as_of_ts`, `reporting_tz`), profiles for `dev` (DuckDB) and `snowflake`, packages `dbt_utils` and `audit_helper`, `.sqlfluff`, and groups `finance`, `growth`, and `audit`.
   - Accept: `dbt debug` and `dbt deps` pass.
-- [ ] 2.2 [M] Sources and staging: `sources.yml` for every raw table with freshness and descriptions; staging per SCHEMAS.md, including deleted and test-mode filters and the `as_of_filter` macro; seeds loaded.
-  - Accept: staging primary keys are unique and not null; D09 and D13 rows are gone; D06 duplicates are flagged, not yet removed.
+- [ ] 2.2 [M] Sources and staging: `sources.yml` for every raw table with freshness and descriptions; staging per SCHEMAS.md, including deleted and test-mode filters and the `as_of_filter` and `as_of_latest` macros (SPEC 8.1); seeds loaded.
+  - Accept: staging primary keys are unique and not null; versioned tables resolve to one row per key at any `as_of_ts`; D09 and D13 rows are gone; D06 duplicates are flagged, not yet removed.
 - [ ] 2.3 [M] `int_identity_spine` and `int_unmatched_identities`.
   - Accept: "each Stripe customer maps to one tailnet" passes after handling D01; the unmatched queue holds the D02 accounts the fallback couldn't resolve.
 - [ ] 2.4 [M] `int_seat_ledger_daily` and `int_subscription_terms_monthly`.
@@ -75,7 +75,7 @@ Kickoff prompt:
 
 > Read SPEC 8.5 and 8.6 and DECISIONS ADR-011 and ADR-012. Do tasks 3.1 to 3.3.
 
-- [ ] 3.1 [M] Close process: `seeds/close_calendar.csv`, `make close PERIOD=`, `fct_close_ledger`, `fct_restatements`, `make close-history`, and `close_summary`.
+- [ ] 3.1 [M] Close process: `make close PERIOD=` (reading `seeds/close_calendar.csv` from 1.2), `fct_close_ledger`, `fct_restatements`, `make close-history`, and `close_summary`.
   - Accept: after `make close-history`, restatements exist for periods with D05 rows, each with a reason; re-closing a closed period is refused without `FORCE=1`.
 - [ ] 3.2 [M] `fct_bookings_to_cash` with the AR rollforward test.
   - Accept: `analyses/trace_customer.sql` traces one enterprise customer from opportunity to invoice to revenue to cash in a single query.
@@ -102,8 +102,8 @@ Kickoff prompt:
 - [ ] 4.3 [C] LookML: 3 views, 1 explore, 1 model, with an `lkml` parse check in CI. dbt2looker can scaffold views; expect to fix its output.
 - [ ] 4.4 [M] Final README with every placeholder replaced by a real number, final DECISIONS.md, and a Known limitations section.
 - [ ] 4.5 [M] Record the Loom (script below) right after a fresh `make demo`, so the numbers on screen match the README.
-- [ ] 4.6 [C] Funnel mirror of the report from the home server (SETUP 6). GitHub Pages stays the primary link.
-- [ ] 4.7 [M] Final QA: fresh clone on a second machine, `make demo` in under 5 minutes, every link works, no secrets in history, and the repo set to public.
+- [ ] 4.6 [C] Funnel mirror of the report from the home server (SETUP 7). GitHub Pages stays the primary link.
+- [ ] 4.7 [M] Final QA: fresh clone on a second machine, `make demo` in under 10 minutes, every link works, no secrets in history, and the repo set to public.
 
 ### Loom script (4 minutes)
 
@@ -120,4 +120,4 @@ Kickoff prompt:
 - Day 1: `make data` is deterministic; five hand checks recorded under 1.11.
 - Day 2: `make build` is green; the waterfall and rollforward tie; the scorecard runs.
 - Day 3: close history with restatements; Snowflake parity passes, or a note explains why it was cut.
-- Day 4: a fresh-clone demo in under 5 minutes; README numbers filled in; Loom recorded.
+- Day 4: a fresh-clone demo in under 10 minutes; README numbers filled in; Loom recorded.

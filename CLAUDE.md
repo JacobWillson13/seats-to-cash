@@ -26,19 +26,20 @@ The demo exists to prove three things to a hiring panel:
 4. `docs/DECISIONS.md`: modeling decisions. Follow them; propose changes there instead of silently deviating.
 5. `docs/SETUP.md`: accounts, environment, and commands.
 
-Config and shared data: `config/simulation.yml` (generator parameters) and `seeds/price_book.csv` (every price, read by both the generator and dbt).
+Config and shared data: `config/simulation.yml` (generator parameters; `config/ci.yml` is a 10% overlay), `seeds/price_book.csv` (every price, read by both the generator and dbt), `seeds/plan_entitlements.csv` (which plan includes which feature), and `seeds/close_calendar.csv` (period close dates).
 
 ## Hard rules
 
-- **Synthetic only.** No real company names, people, logos, or customer data. The company is Wirefern; its domain is wirefern.com. Faker output must use fake domains.
-- **The answer key is fenced.** Nothing outside `models/audit/` may read `source('truth', ...)` or `data/answer_key/`. `scripts/check_truth_fence.py` enforces this in CI. If a mart needs a fact, derive it from raw sources.
+- **Synthetic only.** Generated people, customers, and companies are fictional: no real company names, people, logos, or customer data. The company is Wirefern; its domain is `wirefern.example`. Every invented domain uses the reserved `.example` TLD (ADR-021). Personal emails use real public webmail domains (gmail.com and so on) so signup routing works. Vendor names from the public pricing page (Stripe, Orb, Mullvad, AWS, and so on) are fine.
+- **The answer key is fenced.** No dbt node outside `models/audit/` may read `source('truth', ...)` or `data/answer_key/`. `scripts/check_truth_fence.py` enforces this in CI. If a mart needs a fact, derive it from raw sources. `generator/` and `tests/` may read the answer key.
 - **Deterministic generator.** The same `SEED` and config produce byte-identical Parquet. Never call `datetime.now()`, never use unseeded randomness, and never let output order depend on dict or set hashing. Use the simulation clock and pass `numpy.random.default_rng(seed)` explicitly.
 - **The price book is the single source of truth** for prices: `seeds/price_book.csv`. Never hardcode a price, plan code, or price ID in SQL or Python.
-- **Policy choices are dbt vars**, never hardcoded. See SPEC section 7. Defaults live in `dbt_project.yml`.
+- **Policy choices are dbt vars**, never hardcoded. Every var, its default, and its owner is in SPEC 8.7. Defaults live in `dbt_project.yml`.
 - **Cross-database SQL.** Every model must run on DuckDB and Snowflake. Use dbt cross-database macros (`dbt.date_trunc`, `dbt.dateadd`, `dbt.datediff`, `dbt.safe_cast`, `dbt.type_*`) and `dbt_utils` instead of dialect-specific functions. If a dialect difference is unavoidable, write a dispatched macro in `macros/`.
 - **Money:** raw Stripe amounts are integer minor units (cents); raw Orb amounts are decimal strings; marts use `numeric(18,2)` USD plus original-currency columns. Convert in staging, once.
 - **Time:** raw timestamps are UTC. The reporting timezone is `America/Los_Angeles` (var `reporting_tz`). Month assignment rules are in DECISIONS ADR-009. Never bucket by an issue or created timestamp without checking that ADR.
-- **No secrets in git.** Credentials come from `.env` through `env_var()` in `profiles.yml`. `.env`, `*.p8`, `data/`, `target/`, and `reports/build/` are gitignored.
+- **As-of reads:** mutable raw tables are version logs (ADR-018). Staging reads them only through the `as_of_latest` macro, and append-only tables through `as_of_filter`. Never filter a versioned table on its load timestamp alone.
+- **No secrets in git.** `profiles.yml` is committed at the repo root and holds no secrets: credentials come from `.env` through `env_var()`. The Makefile runs dbt with `--profiles-dir .`. `.env`, `*.p8`, `data/`, `target/`, and `reports/build/` are gitignored.
 - **New dependencies** get a one-line note in the dependency log at the bottom of DECISIONS.md.
 
 ## Conventions
@@ -55,7 +56,7 @@ Config and shared data: `config/simulation.yml` (generator parameters) and `seed
 
 | Command | Does |
 |---|---|
-| `make setup` | uv sync, dbt deps, pre-commit install |
+| `make setup` | uv sync, dbt deps (once `dbt_project.yml` exists), pre-commit install |
 | `make data SEED=42` | run the generator, write Parquet, load DuckDB raw schemas |
 | `make test-gen` | pytest invariants on generator output |
 | `make build` | `dbt build` on DuckDB (models and tests) |
@@ -65,13 +66,13 @@ Config and shared data: `config/simulation.yml` (generator parameters) and `seed
 | `make close-history` | replay closes for 2026-04 through 2026-09 |
 | `make report` | build the Evidence static site into `reports/build` |
 | `make snowflake` | load raw to Snowflake, `dbt build --target snowflake`, parity check |
-| `make demo` | setup, data, build, scorecard, report: the fresh-clone path, under 5 minutes |
+| `make demo` | setup, data, build, scorecard, report: the fresh-clone path, under 10 minutes at default scale |
 
 ## How to work a task
 
 1. Pick the next unchecked task in `docs/PLAN.md` and read its acceptance criteria before writing code.
 2. Make the smallest change that satisfies it. Don't start the next task in the same change.
-3. Run `make build` (plus `make test-gen` for generator work). Everything green before you call it done.
+3. Run `make build` (plus `make test-gen` for generator work). Everything green before you call it done. In Phase 1, before dbt exists, the gate is `make test-gen` plus the task's acceptance checks; `make build` applies from task 2.1.
 4. Check the box in PLAN.md and add a one-line note under the task if anything surprised you.
 5. If you chose between reasonable alternatives, add or update an ADR in DECISIONS.md.
 

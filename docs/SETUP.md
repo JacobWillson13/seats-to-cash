@@ -52,7 +52,6 @@ wc -l seeds/free_email_domains.csv
 cat > .env.example <<'EOF'
 SNOWFLAKE_ACCOUNT=
 SNOWFLAKE_PRIVATE_KEY_PATH=~/.snowflake/seats_to_cash_rsa.p8
-RAW_DATABASE=raw
 EOF
 cp .env.example .env
 ```
@@ -123,7 +122,7 @@ If Hightouch's faster sync engine asks for a writable schema, create `analytics.
 
 ### 2.3 dbt profile
 
-`~/.dbt/profiles.yml` (keep it out of the repo):
+`profiles.yml` is committed at the repo root. It holds no secrets: everything sensitive comes from `.env` through `env_var()`. The Makefile runs dbt with `--profiles-dir .`, so a fresh clone needs no `~/.dbt` setup.
 
 ```yaml
 seats_to_cash:
@@ -145,7 +144,7 @@ seats_to_cash:
       threads: 8
 ```
 
-In `sources.yml`, set each raw source's `database` to `"{{ env_var('RAW_DATABASE', target.database) }}"`, so DuckDB reads its own file and Snowflake reads `raw`. Keep the schema names (`raw_app`, `raw_orb`, and so on) identical on both targets.
+In `sources.yml`, set each raw source's `database` to `"{{ 'raw' if target.name == 'snowflake' else target.database }}"`, so DuckDB reads its own file and Snowflake reads `raw`. Keep the schema names (`raw_app`, `raw_orb`, and so on) identical on both targets.
 
 ### 2.4 Load and build
 
@@ -238,8 +237,9 @@ If Funnel isn't enabled for the tailnet, the CLI prints a link to turn it on in 
 ## 8. Before going public
 
 ```bash
-git log -p | grep -i -E "password|private_key|BEGIN .*KEY|token=" | head
-git ls-files | grep -E "\.env$|\.p8$|profiles\.yml$"
+git log -p | grep -i -E "password|BEGIN .*KEY|token=" | head
+git ls-files | grep -E "\.env$|\.p8$"
+grep -n -E "^\s*(password|private_key_path|account|user):" profiles.yml | grep -v "env_var\|svc_dbt"
 ```
 
-Both should return nothing. Then set the repo to public and check every README link from a logged-out browser.
+All three should return nothing. `profiles.yml` is committed on purpose; the last check confirms it reads secrets only through `env_var()`. Then set the repo to public and check every README link from a logged-out browser.
