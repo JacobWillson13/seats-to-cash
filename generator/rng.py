@@ -35,6 +35,8 @@ class Stream(IntEnum):
     DEVICES = 40
     EMAILS = 41
     SYNC_LAG = 50
+    STRIPE_REFUNDS = 51
+    DEFECTS = 52
 
 
 def entity_rng(seed: int, stream: Stream, *key: int) -> np.random.Generator:

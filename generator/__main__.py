@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from generator.config import ConfigError, cross_check, load_config
+from generator.load import load
 from generator.pipeline import run
 from generator.pricebook import PriceBookError
 from generator.reference import SeedError, Seeds
@@ -34,6 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--check", action="store_true", help="validate the config and seeds, then exit"
+    )
+    parser.add_argument(
+        "--no-load", action="store_true", help="write Parquet only; skip the DuckDB load"
     )
     return parser
 
@@ -73,6 +77,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {name:<46} {seconds:6.2f}s")
     print(f"  {'total':<46} {sum(result.timings.values()):6.2f}s")
     print(f"generator: wrote {out_dir / 'raw'} and {result.report_path}")
+    if not args.no_load:
+        database = (
+            config.output.duckdb_path if args.out is None else out_dir / "seats_to_cash.duckdb"
+        )
+        counts = load(out_dir, database)
+        print(f"generator: loaded {len(counts)} tables into {database}")
+        for name, rows in counts.items():
+            print(f"  {name:<44} {rows:>10,} rows")
     return 0
 
 

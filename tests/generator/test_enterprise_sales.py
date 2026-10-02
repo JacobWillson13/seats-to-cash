@@ -65,6 +65,10 @@ def test_contract_truth_and_salesforce_contracts(enterprise_result):
         data = pq.read_table(out / root / table.source / f"{table.name}.parquet")
         assert data.schema == table.schema
     opportunities = pq.read_table(out / "raw/salesforce/opportunity.parquet").to_pylist()
-    won = [row for row in opportunities if row["is_won"]]
+    won = [row for row in opportunities if row["is_won"] and row["type"] == "New Business"]
     assert len(won) == 62
+    later = [row for row in opportunities if row["type"] in ("Renewal", "Expansion")]
+    events = [e for e in result.sim.contract_events if e.kind in ("renewal", "expansion")]
+    assert len(later) == len(events)
+    assert all(row["is_won"] and row["recurring_arr__c"] > 0 for row in later)
     assert all(row["close_date"] <= dt.date(2026, 9, 30) for row in won)

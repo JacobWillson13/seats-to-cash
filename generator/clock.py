@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
 
 import numpy as np
 
@@ -12,12 +13,14 @@ SECONDS_PER_DAY = 86_400
 US_PER_SECOND = 1_000_000
 US_PER_DAY = SECONDS_PER_DAY * US_PER_SECOND
 
-# Time-of-day windows (seconds, UTC) that order same-day business events consistently:
+# Time-of-day windows (seconds of the local business day in the reporting time zone) that
+# order same-day business events consistently:
 # departures, then admin seat actions, then logins, then lifecycle transitions.
 PHASE_DEPARTURES = (0, 21_600)
 PHASE_ADMIN = (21_600, 32_400)
 PHASE_LOGINS = (32_400, 64_800)
 PHASE_LIFECYCLE = (64_800, 86_400)
+OFFSET_PAD = 800  # days of UTC offsets kept before and after the simulation window
 
 
 def first_of_next_month(d: dt.date) -> dt.date:
@@ -65,10 +68,15 @@ def daily_probability(monthly: float | np.ndarray, multiplier: float | np.ndarra
 
 @dataclass(frozen=True)
 class Calendar:
-    """Day index 0 is sim_start_date; the last day is end_date."""
+    """Day index 0 is sim_start_date; the last day is end_date.
+
+    A day index is a business date in the reporting time zone (ADR-014): timestamps convert a
+    (day, second-of-day) pair from local time to UTC, so every event's local date is its day.
+    """
 
     start: dt.date
     end: dt.date
+    tz: str = "America/Los_Angeles"
 
     def __post_init__(self):
         n = (self.end - self.start).days + 1
@@ -88,16 +96,33 @@ class Calendar:
         object.__setattr__(
             self, "month_end", np.searchsorted(month_of, np.arange(len(months)), "right") - 1
         )
+        # UTC offset (seconds) of local noon for each day from OFFSET_PAD days before the start
+        # through OFFSET_PAD days after the end; DST changes happen overnight, so noon is safe.
+        zone = ZoneInfo(self.tz)
+        offsets = [
+            int(
+                dt.datetime.combine(self.start + dt.timedelta(days=i), dt.time(12), zone)
+                .utcoffset()
+                .total_seconds()
+            )
+            for i in range(-OFFSET_PAD, n + OFFSET_PAD)
+        ]
+        object.__setattr__(self, "_offsets", np.array(offsets, np.int64))
 
     def day(self, d: dt.date) -> int:
         return (d - self.start).days
 
+    def utc_offset(self, day) -> np.ndarray:
+        """Local UTC offset in seconds for day indices (clamped to the padded table)."""
+        idx = np.clip(np.asarray(day, np.int64) + OFFSET_PAD, 0, self._offsets.size - 1)
+        return self._offsets[idx]
+
     def epoch_us(self, day, second=0):
-        """Microseconds since 1970-01-01 UTC for a day index and second of day."""
+        """Microseconds since 1970-01-01 UTC for a local day index and second of that day."""
         base = (self.start - dt.date(1970, 1, 1)).days
-        return (np.asarray(day, np.int64) + base) * US_PER_DAY + np.asarray(
-            second, np.int64
-        ) * US_PER_SECOND
+        day = np.asarray(day, np.int64)
+        local = (day + base) * US_PER_DAY + np.asarray(second, np.int64) * US_PER_SECOND
+        return local - self.utc_offset(day) * US_PER_SECOND
 
     def epoch_days(self, day):
         return np.asarray(day, np.int64) + (self.start - dt.date(1970, 1, 1)).days

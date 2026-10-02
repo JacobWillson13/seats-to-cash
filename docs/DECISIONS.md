@@ -84,6 +84,61 @@ Status: Accepted
 
 Enterprise contracts come from product-led growth and from direct sales. A PLG tailnet that reaches `enterprise.lead_seat_threshold` seats becomes a lead and closes at `enterprise.lead_to_close` after a lag; its opportunity has `lead_source` `Product Qualified Lead`. A direct-sales account (`enterprise.direct_sales_accounts`) appears in Salesforce as a lead with `lead_source` `Inbound` or `Outbound` before any product tailnet exists; its tailnet is created on the signing date. `truth_enterprise_contracts.enterprise_source` records `plg` or `direct` for every contract event. Direct-sales deals are simulated after the PLG cohort in their own pass, so adding them does not change any PLG draw. At seed 42 the default config closes 62 contracts in the window: 32 PLG and 30 direct.
 
+## ADR-014: A sim day is a Los Angeles business date
+
+Status: Accepted
+
+The simulation counts days. Each day index is a business date in the reporting time zone, `America/Los_Angeles`, and each event's second-of-day is local time. `Calendar.epoch_us` converts (day, second) from local time to UTC using that day's UTC offset at local noon, so DST changes overnight never move an event to another date. Converting any landed timestamp back to Los Angeles time gives its sim date, and month-end state in dbt (seats held, refunds issued) agrees with the answer key. Date columns (invoice dates, service periods, close dates) are already local dates.
+
+## ADR-015: Refunds and credit notes reduce revenue when they happen
+
+Status: Accepted (implements the ADR-009 default)
+
+Monthly revenue is line revenue recognized by service day, less refunds in the Los Angeles month the refund is created, less credit notes in their effective month. Revenue after `end_date` is outside the reporting window. The deferred-revenue rollforward uses gross line billings and gross recognized revenue, so refunds and credit notes do not break it; they are reported beside it.
+
+## ADR-016: Enterprise ARR comes from Salesforce won opportunities
+
+Status: Accepted
+
+Each enterprise contract event has a Closed Won opportunity: New Business at signing, then Renewal or Expansion. `recurring_arr__c` is the contract's total annual value after the event. Enterprise MRR at a month end is the latest won opportunity's `recurring_arr__c` / 12, rounded half up to cents, while the tailnet's Orb enterprise subscription is active. Orb invoice lines cannot give it: an expansion is invoiced as a prorated amount.
+
+## ADR-017: Stripe collects what Orb invoices
+
+Status: Accepted
+
+- **What syncs:** every Orb invoice with a positive total. Zero-total invoices (internal tailnets) never reach Stripe.
+- **IDs:** the Stripe invoice ID is Orb's `external_sync_id`, and the Stripe customer ID is the Orb customer's `payment_provider_id`.
+- **Metadata:** the Stripe invoice carries `orb_invoice_id` and `payment_source` (`card` for self-serve, `ach` for Enterprise).
+- **Charges and invoice status follow Orb's history:**
+  - A recorded payment failure gives a failed charge after finalization.
+  - A paid Orb invoice gives one succeeded charge at its `paid_at`.
+  - An Orb uncollectible credit note marks the Stripe invoice `uncollectible`.
+- **Refunds:** the only new draw. A `payments.refund_rate` share of succeeded charges is refunded, fully or by half, 1 to 20 days later, from its own seeded stream.
+- **Fees:**
+  - Card: `card_fee_pct` plus `card_fee_fixed_cents`.
+  - ACH: `ach_fee_pct`, capped at `ach_fee_cap_cents`.
+  - Each fee is rounded half up to a cent.
+- **Balance transactions:** settle on `created`'s local date plus `payout_lag_days` (`available_on`). Cash is reported by `available_on` month.
+
+## ADR-018: How the planted defects look
+
+Status: Accepted
+
+Defects are injected into clean rows after the answer key is built, each from its own seeded stream, and each injected or affected row gets a `defect_manifest` row.
+
+- **D01:** a Stripe customer is re-created partway through its history. Later invoices and charges point at the copy, which has the same email and no metadata, so identity resolution matches on email.
+- **D03:** the internal tailnets are recorded, not injected.
+- **D06:** an invoice is synced twice under a second ID with the same `orb_invoice_id` and no charge. Staging keeps the first sync per Orb invoice.
+- **D09:** copies of succeeded charges and of opportunities are marked `_fivetran_deleted` or `is_deleted`.
+- **D13:** complete test-mode bundles (customer, paid invoice, charge, balance transaction) with `livemode` false.
+- **D05:** arrives with the close process.
+
+## ADR-019: DuckDB is loaded by the generator
+
+Status: Accepted
+
+`make data` writes Parquet and then loads every file into `data/seats_to_cash.duckdb` as `raw_<source>.<table>` (`--no-load` skips it). The load replaces raw tables only, so dbt schemas in the same file survive a reload. Parquet is the deterministic artifact; the DuckDB file is not byte-compared.
+
 ## Dependency log
 
 Installed (`pyproject.toml`, locked in `uv.lock`):
@@ -95,13 +150,13 @@ Installed (`pyproject.toml`, locked in `uv.lock`):
 | Faker | Synthetic person and company name lists |
 | free-email-domains | Builds the committed `seeds/free_email_domains.csv` |
 | pydantic, PyYAML | Config loading and validation |
+| dbt Core, dbt-duckdb | Transformations on DuckDB |
 | pytest, Ruff, pre-commit | Tests, lint, and hooks (dev) |
 
 Planned, added with the PLAN task that first needs them:
 
 | Dependency | Purpose | Task |
 |---|---|---|
-| dbt Core, dbt-duckdb | Transformations | c |
 | SQLFluff | SQL lint | c |
 | lkml | LookML parse test | d |
 | dbt-snowflake, snowflake-connector-python | Snowflake load and build | e |

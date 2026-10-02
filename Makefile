@@ -16,7 +16,7 @@ seeds:  ## rebuild the committed seeds (needs the network for ECB rates; commit 
 	uv run python scripts/build_close_calendar.py
 	uv run python scripts/fetch_fx.py
 
-data:  ## run the generator and write Parquet (the DuckDB load arrives with PLAN task b)
+data:  ## generate source Parquet and load the DuckDB raw schemas
 	uv run python -m generator --config $(CONFIG) --seed $(SEED)
 
 test-gen:  ## pytest invariants on generator code and output

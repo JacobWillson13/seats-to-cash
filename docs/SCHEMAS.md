@@ -1,9 +1,10 @@
 # Source schemas
 
-`generator/tables.py` is the typed contract for every table: names, columns, primary keys, sort order, and Parquet types. This file documents every table the generator writes, plus the tables still planned for PLAN task b. Raw tables are not the scope boundary: dbt stages every landed table, and the marts use only what the story needs.
+`generator/tables.py` is the typed contract for every table: names, columns, primary keys, sort order, and Parquet types. This file documents every table the generator writes; `raw_finance` is still planned. Raw tables are not the scope boundary: dbt stages every landed table, and the marts use only what the story needs.
 
 Conventions:
-- All source tables load under `raw_<source>`; the answer key loads under `raw_truth`. The generator writes Parquet to `data/raw/<source>/` and `data/answer_key/truth/`.
+- The generator writes Parquet to `data/raw/<source>/` and `data/answer_key/truth/`; `make data` then loads every file into DuckDB (`data/seats_to_cash.duckdb`) as `raw_<source>.<table>` and `raw_truth.<table>`.
+- A sim day is a business date in America/Los_Angeles; every timestamp converts to that local date (ADR-014).
 - USD only. Orb amounts are decimal strings; Stripe amounts are integer cents; Salesforce amounts are `decimal(18,2)`.
 - Timestamps are UTC microseconds without a zone.
 - "Version log" means one row per version of an entity, keyed by the entity ID and a load timestamp. "Append-only" means one row per fact.
@@ -42,15 +43,17 @@ Every table carries `_exported_at`, the export load time. Price IDs are `op_<pri
 | `events` | Append-only usage event | id, idempotency_key, event_name (`user_active`), external_customer_id, timestamp, properties | staged only |
 | `daily_line_item_revenue` | Line item × service day | revenue_date, invoice_line_item_id, invoice_id, customer_id, price_id, recognized_amount, currency | staged only; may cross-check revenue |
 
-## raw_stripe (planned, PLAN task b)
+## raw_stripe (Fivetran-shaped)
 
-Every table includes `livemode`, `_fivetran_synced`, and `_fivetran_deleted` where applicable. D13 rows use test mode and are filtered in staging.
+Amounts are integer cents; `currency` is `usd`. Every table carries `livemode`, `_fivetran_synced`, and `_fivetran_deleted`. Staging keeps only `livemode` rows (D13) that are not `_fivetran_deleted` (D09). Every Orb invoice with a positive total is synced once: the Stripe invoice ID is the Orb `external_sync_id`, and the Stripe customer ID is the Orb customer's `payment_provider_id` (ADR-017).
 
-- `customer` (version log): id, created, email, name, currency, delinquent, description, metadata, is_deleted, livemode.
-- `invoice` (version log): id, customer_id, number, status, billing_reason, collection_method, currency, subtotal, tax, total, amount_due, amount_paid, amount_remaining, created, due_date, period_start/end, paid, charge_id, metadata, status transition timestamps, livemode.
-- `charge` (version log): id, customer_id, invoice_id, amount, amount_refunded, currency, created, status, paid, captured, failure fields, payment method, balance transaction ID, livemode.
-- `refund`: id, charge_id, amount, currency, created, reason, status, balance_transaction_id.
-- `balance_transaction`: id, source, type, amount, fee, net, currency, created, available_on, status.
+| Table | Grain | Columns |
+|---|---|---|
+| `customer` | One row per customer | id, created, email, name, currency, delinquent, description, metadata (JSON: `tailnet_id`, `orb_customer_id`), is_deleted |
+| `invoice` | Version log per invoice (`open`, then `paid` or `uncollectible`) | id, customer_id, number, status, billing_reason, collection_method (`charge_automatically`; `send_invoice` for Enterprise), currency, subtotal, tax, total, amount_due, amount_paid, amount_remaining, created, due_date, period_start, period_end, paid, charge_id, metadata (JSON: `orb_invoice_id`, `payment_source` `card` or `ach`), status_transitions_finalized_at, status_transitions_paid_at, status_transitions_marked_uncollectible_at |
+| `charge` | Version log per charge (a refund adds a version) | id, customer_id, invoice_id, amount, amount_refunded, currency, created, status (`succeeded`, `failed`), paid, captured, refunded, failure_code, failure_message, payment_method_type (`card`, `us_bank_account`), balance_transaction_id |
+| `refund` | One row per refund | id, charge_id, amount, currency, created, reason, status, balance_transaction_id |
+| `balance_transaction` | One row per settled charge or refund | id, source (charge or refund ID), type (`charge`, `refund`), amount, fee, net, currency, created, available_on (`created` local date + `payments.payout_lag_days`), status (`available`, `pending`) |
 
 ## raw_salesforce (enterprise CRM, Fivetran-shaped)
 
@@ -59,13 +62,13 @@ Every PLG tailnet that reaches the enterprise seat threshold, and every direct-s
 | Table | Grain | Columns |
 |---|---|---|
 | `account` | Version log (`Prospect`, then `Customer` at signing) | id, name, website, type, industry, number_of_employees, billing_country, owner_id, created_date, last_modified_date, tailnet_id__c, customer_tier__c |
-| `opportunity` | Version log (open, then `Closed Won` at signing) | id, account_id, name, type, stage_name, is_closed, is_won, amount, close_date, created_date, last_modified_date, probability, owner_id, lead_source, contract_term_months__c, contract_start_date__c, recurring_arr__c, purchase_channel__c (`stripe` when won), marketplace_offer_id__c (always null) |
+| `opportunity` | New Business: version log (open, then `Closed Won` at signing). Renewal and Expansion: one `Closed Won` row per contract event. | id, account_id, name, type, stage_name, is_closed, is_won, amount, close_date, created_date, last_modified_date, probability, owner_id, lead_source, contract_term_months__c, contract_start_date__c, recurring_arr__c, purchase_channel__c (`stripe` when won), marketplace_offer_id__c (always null) |
 | `lead` | One row per direct-sales account | id, account_id, lead_source, status, created_date |
 | `user` | The single owning sales user | id, name, email, user_role_name, is_active |
 
-`lead_source` records the enterprise source: `Product Qualified Lead` for PLG seat-threshold leads, and `Inbound` or `Outbound` for direct sales. A direct-sales account that has not signed by 2026-09-30 has no `tailnet_id__c`. Open pipeline with a close date after 2026-09-30 stays open.
+`recurring_arr__c` on every won opportunity is the contract's total annual value after that event, so the latest won opportunity carries current enterprise ARR (ADR-016). `lead_source` records the enterprise source: `Product Qualified Lead` for PLG seat-threshold leads, and `Inbound` or `Outbound` for direct sales. A direct-sales account that has not signed by 2026-09-30 has no `tailnet_id__c`. Open pipeline with a close date after 2026-09-30 stays open.
 
-## raw_finance (planned, PLAN task b)
+## raw_finance (planned, PLAN tier 3)
 
 - `manual_adjustments`: adjustment_id, account_ref, effective_month, amount_usd, category, reason, entered_by, approved_by, entered_at, _loaded_at. The local generator emits CSV; Fivetran is intended to sync an equivalent Google Sheet.
 
@@ -74,10 +77,10 @@ Every PLG tailnet that reaches the enterprise seat threshold, and every direct-s
 | Table | Status | Columns |
 |---|---|---|
 | `truth_enterprise_contracts` | written | tailnet_id, event_date, event_kind (`close`, `renewal`, `expansion`), enterprise_source (`plg`, `direct`), parent_tailnet_id (always null), price_id, currency (`USD`), channel (`stripe`), contract_start_date, contract_end_date, term_months, seats, discount_pct, recurring_acv, services_amount (`0.00`), services_delivery_date |
-| `truth_mrr_monthly` | planned (task b) | tailnet_id, month, plan_code, price_version, billing_basis, quantity, mrr_runrate_usd, mrr_billed_usd, is_internal |
-| `truth_revenue_monthly` | planned (task b) | tailnet_id, month, revenue_usd |
-| `truth_identity` | planned (task b) | tailnet_id, orb_customer_id, stripe_customer_id, salesforce_account_id |
-| `defect_manifest` | planned (task b) | defect_id, defect_code, source_table, record_key, injected_at_sim, notes |
+| `truth_mrr_monthly` | written | tailnet_id, month (first day), plan_code, price_version, billing_basis (`mau`, `seat`, `contract`), quantity, mrr_runrate_usd, mrr_billed_usd (line amounts with service start in the month), is_internal |
+| `truth_revenue_monthly` | written | tailnet_id, month, recognized_usd, refunds_usd, credit_notes_usd, revenue_usd (= recognized − refunds − credit notes), is_internal |
+| `truth_identity` | written | tailnet_id, orb_customer_id, stripe_customer_id (the canonical customer), salesforce_account_id, is_internal |
+| `defect_manifest` | written | defect_id (`D01-00001`), defect_code, source_table (`<source>.<table>`), record_key (the injected or affected row ID), injected_at_sim, notes |
 
 Truth references may be read only by models in `models/audit/`. Other marts derive results from raw source tables.
 

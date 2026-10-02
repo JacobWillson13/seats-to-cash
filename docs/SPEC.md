@@ -44,8 +44,8 @@ Nonprofit discount is 50%, as a separate negative line linked to its discounted 
 
 - `raw_app`: tailnets, users, seat events, plan changes, device registrations, daily and monthly activity, and feature usage.
 - `raw_orb`: customers, plans, prices, subscriptions, subscription quantity changes, invoices, invoice line items, credit notes, usage events, and daily line-item revenue. The marts rely on customers, subscriptions, invoices, invoice line items, and credit notes.
-- `raw_stripe`: customer, invoice, charge, refund, and balance transaction.
-- `raw_salesforce`: enterprise account, opportunity, lead (direct-sales accounts only), and the single owning sales user.
+- `raw_stripe`: customer, invoice (synced from Orb, with `orb_invoice_id` and `payment_source` metadata), charge, refund, and balance transaction (ADR-017).
+- `raw_salesforce`: enterprise account, opportunity (New Business, Renewal, Expansion), lead (direct-sales accounts only), and the single owning sales user.
 - `raw_finance`: a small `manual_adjustments.csv`, intended to become a Google Sheet synced by Fivetran.
 
 The generator writes clean answer-key tables before injecting source defects: `truth_mrr_monthly`, `truth_revenue_monthly`, `truth_identity`, and `defect_manifest`, plus `truth_enterprise_contracts`, which records every contract event. dbt audit models are the only SQL allowed to read truth.
@@ -58,9 +58,11 @@ MRR is the monthly run rate at month end, in USD. For v3 Starter and Premium, qu
 
 ARR movements compare consecutive month-end states and classify new, expansion, contraction, churn, reactivation, and repricing. For a price or plan migration with unchanged quantity, the price-volume decomposition isolates repricing from expansion or contraction. The monthly ARR waterfall must close exactly.
 
-Billings are grouped by service-period start month, not invoice issue month. Revenue recognizes v3 monthly usage in its service month, v4 seat consideration over the covered days, and enterprise consideration over its contract service period. The deferred-revenue rollforward is opening balance plus billings less revenue equals closing balance. Cash is successful Stripe charges less refunds and fees, tied to Stripe balance transactions. Finance adjustments are separately identified and approved.
+Enterprise MRR uses the latest won Salesforce opportunity's `recurring_arr__c` (ADR-016). A sim day is a Los Angeles business date (ADR-014).
 
-Refunds default to reversing revenue when issued; late credit notes restate the issue month only when the selected policy says so (ADR-009).
+Billings are grouped by service-period start month, not invoice issue month. Revenue recognizes v3 monthly usage in its service month, v4 seat consideration over the covered days, and enterprise consideration over its contract service period. The deferred-revenue rollforward is opening balance plus billings less revenue equals closing balance. Cash is successful Stripe charges less refunds and fees, tied to Stripe balance transactions and reported by settlement (`available_on`) month. Finance adjustments are separately identified and approved.
+
+Refunds reverse revenue in the month they are issued, and credit notes in their effective month (ADR-009, ADR-015).
 
 ## 5. dbt and close outputs
 
