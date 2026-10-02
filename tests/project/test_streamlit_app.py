@@ -48,6 +48,10 @@ class FakeSession:
 
         return Result()
 
+    def use_warehouse(self, name):
+        """Real Snowpark sessions switch warehouses here; DuckDB has none, so do nothing."""
+        return None
+
 
 def test_app_uses_only_preinstalled_packages_and_qualified_names():
     source = APP.read_text()
