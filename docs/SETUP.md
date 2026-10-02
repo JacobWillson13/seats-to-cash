@@ -16,9 +16,38 @@ make build                       # dbt seed, run, and test on DuckDB, then the t
 
 The committed seeds in `seeds/` are ready to use. Generation does not rebuild seeds or need network access; only `make seeds` rebuilds them, and it needs the network.
 
-## Snowflake
+## Snowflake (`make snowflake`, run locally)
 
-Create an XSMALL warehouse with auto-suspend, a raw database, an analytics database, and a transform role. Use key-pair authentication for dbt. Put `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_PRIVATE_KEY_PATH` in `.env` (see `.env.example`); `profiles.yml` reads those values through `env_var()`. `make snowflake` (PLAN task e) loads Parquet using `write_pandas` and runs `dbt build --target snowflake`; the owner runs it locally. Suspend the warehouse after testing.
+`make snowflake` loads the Parquet that `make data` wrote under `data/` into Snowflake with `write_pandas`, then runs `dbt build --target snowflake`. It needs a Snowflake account and key-pair credentials in `.env`; nothing else changes.
+
+1. **Generate the data** with `make data SEED=42`, or `make data CONFIG=config/ci.yml` for a quick run.
+2. **Create a key pair** for the dbt user:
+   ```bash
+   mkdir -p ~/.snowflake
+   openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out ~/.snowflake/seats_to_cash_rsa.p8 -nocrypt
+   openssl rsa -in ~/.snowflake/seats_to_cash_rsa.p8 -pubout -out ~/.snowflake/seats_to_cash_rsa.pub
+   ```
+3. **Create the warehouse, role, database, and user.** Run this once as `ACCOUNTADMIN`, pasting the public key body without its header and footer lines:
+   ```sql
+   create warehouse if not exists TRANSFORMING warehouse_size = xsmall auto_suspend = 60 initially_suspended = true;
+   create role if not exists TRANSFORMER;
+   create database if not exists SEATS_TO_CASH;
+   grant usage on warehouse TRANSFORMING to role TRANSFORMER;
+   grant ownership on database SEATS_TO_CASH to role TRANSFORMER;
+   create user if not exists DBT_TRANSFORMER default_role = TRANSFORMER default_warehouse = TRANSFORMING
+     rsa_public_key = '<public key body>';
+   grant role TRANSFORMER to user DBT_TRANSFORMER;
+   ```
+4. **Fill in `.env`:** `cp .env.example .env`, then set:
+   - `SNOWFLAKE_ACCOUNT`: the account identifier, for example `ab12345.us-east-1` or `orgname-accountname`.
+   - `SNOWFLAKE_PRIVATE_KEY_PATH`: an absolute path, because dbt does not expand `~`.
+   - The user, role, warehouse, and database, if they differ from the defaults. `.env` is git-ignored.
+5. **Install the Snowflake group:** `uv sync --group snowflake`.
+6. **Check the plan without connecting:** `uv run --group snowflake python scripts/snowflake_load.py --dry-run` lists each `SEATS_TO_CASH.RAW_<SOURCE>.<TABLE>` it will replace.
+7. **Run `make snowflake`.** The loader creates the `RAW_*` schemas and replaces each raw table, with upper-case names and logical types. dbt then builds seeds, staging, intermediate, marts, and audits into the `STAGING`, `INTERMEDIATE`, `MARTS`, `AUDIT`, and `SEEDS` schemas, and runs every test.
+8. **Suspend the warehouse** afterwards: `alter warehouse TRANSFORMING suspend;`.
+
+Raw schemas live in the same database as the dbt schemas (ADR-021). The dashboard queries in `analyses/dashboard/` are written in Snowflake syntax against the `MARTS` and `AUDIT` schemas.
 
 ## Salesforce enterprise sync
 

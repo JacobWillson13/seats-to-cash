@@ -5,7 +5,7 @@ CONFIG ?= config/simulation.yml
 DBT := uv run dbt
 DBT_ARGS := --profiles-dir .
 
-.PHONY: setup seeds data test-gen test lint build fence
+.PHONY: setup seeds data test-gen test lint build fence snowflake
 
 setup:  ## uv sync, dbt deps (once dbt_project.yml exists), pre-commit install
 	uv sync
@@ -36,3 +36,8 @@ build:  ## dbt seed, run, and test on DuckDB, then the truth-fence check
 
 fence:  ## only models/audit may read the answer key
 	uv run python scripts/check_truth_fence.py
+
+snowflake:  ## load data/ into Snowflake with write_pandas, then dbt build --target snowflake (reads .env)
+	uv run --group snowflake python scripts/snowflake_load.py
+	set -a; [ -f .env ] && . ./.env; set +a; \
+		uv run --group snowflake dbt build --target snowflake $(DBT_ARGS)

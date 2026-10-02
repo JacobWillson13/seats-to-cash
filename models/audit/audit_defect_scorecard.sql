@@ -4,87 +4,74 @@ with manifest as (
     select * from {{ source('truth', 'defect_manifest') }}
 ),
 
+mart_tailnets as (
+    select distinct tailnet_id from {{ ref('fct_mrr_monthly') }}
+    union
+    select distinct tailnet_id from {{ ref('fct_revenue_monthly') }}
+),
+
+raw_invoices as (
+    select id, {{ json_string('metadata', 'orb_invoice_id') }} as orb_invoice_id
+    from {{ source('stripe', 'invoice') }}
+    where livemode
+),
+
+double_synced as (
+    select distinct i.id
+    from raw_invoices as i
+    inner join (
+        select orb_invoice_id from raw_invoices group by 1 having count(distinct id) > 1
+    ) as d on d.orb_invoice_id = i.orb_invoice_id
+),
+
+staged as (
+    select stripe_customer_id as record_key, 'stripe.customer' as source_table
+    from {{ ref('stg_stripe__customers') }}
+    union all
+    select stripe_invoice_id, 'stripe.invoice' from {{ ref('stg_stripe__invoices') }}
+    union all
+    select stripe_charge_id, 'stripe.charge' from {{ ref('stg_stripe__charges') }}
+    union all
+    select balance_transaction_id, 'stripe.balance_transaction'
+    from {{ ref('stg_stripe__balance_transactions') }}
+    union all
+    select opportunity_id, 'salesforce.opportunity' from {{ ref('stg_salesforce__opportunities') }}
+),
+
 records as (
-    -- D01: a duplicate Stripe customer is detected when resolved by email, and handled when
-    -- it maps to the tailnet's canonical customer.
     select
-        m.defect_code, m.record_key,
-        map.resolution_method = 'email' as detected,
-        map.canonical_stripe_customer_id = ti.stripe_customer_id as handled
+        m.defect_code,
+        m.record_key,
+        case m.defect_code
+            -- D01: a duplicate Stripe customer resolved to its tailnet by email.
+            when 'D01' then coalesce(map.resolution_method = 'email', false)
+            -- D03: an internal tailnet flagged in staging.
+            when 'D03' then coalesce(t.is_internal, false)
+            -- D06: an Orb invoice with two live Stripe invoices.
+            when 'D06' then ds.id is not null
+            -- D09 and D13 are detectable from their deleted and livemode flags.
+            else true
+        end as detected,
+        case m.defect_code
+            -- D01: mapped to the tailnet's canonical customer.
+            when 'D01' then coalesce(map.canonical_stripe_customer_id = ti.stripe_customer_id, false)
+            -- D03: excluded from every finance mart.
+            when 'D03' then coalesce(t.is_internal, false) and mt.tailnet_id is null
+            -- D06, D09, D13: dropped by staging.
+            else s.record_key is null
+        end as handled
     from manifest as m
-    left join {{ ref('int_stripe_customer_map') }} as map on map.stripe_customer_id = m.record_key
-    left join {{ source('truth', 'truth_identity') }} as ti on ti.tailnet_id = map.tailnet_id
-    where m.defect_code = 'D01'
-
-    union all
-
-    -- D03: an internal tailnet is detected when flagged, and handled when no finance mart
-    -- carries it.
-    select
-        m.defect_code, m.record_key,
-        coalesce(t.is_internal, false),
-        coalesce(t.is_internal, false)
-        and m.record_key not in (select tailnet_id from {{ ref('fct_mrr_monthly') }})
-        and m.record_key not in (select tailnet_id from {{ ref('fct_revenue_monthly') }})
-    from manifest as m
-    left join {{ ref('stg_app__tailnets') }} as t on t.tailnet_id = m.record_key
-    where m.defect_code = 'D03'
-
-    union all
-
-    -- D06: a duplicate sync is detected when its Orb invoice has two live Stripe invoices,
-    -- and handled when staging keeps only the first.
-    select
-        m.defect_code, m.record_key,
-        m.record_key in (
-            select id from {{ source('stripe', 'invoice') }}
-            where {{ json_string('metadata', 'orb_invoice_id') }} in (
-                select {{ json_string('metadata', 'orb_invoice_id') }}
-                from {{ source('stripe', 'invoice') }}
-                where livemode
-                group by 1
-                having count(distinct id) > 1
-            )
-        ),
-        m.record_key not in (select stripe_invoice_id from {{ ref('stg_stripe__invoices') }})
-    from manifest as m
-    where m.defect_code = 'D06'
-
-    union all
-
-    -- D09: a soft-deleted row is detected by its deleted flag and handled when staging drops it.
-    select
-        m.defect_code, m.record_key,
-        true,
-        case m.source_table
-            when 'stripe.charge' then
-                m.record_key not in (select stripe_charge_id from {{ ref('stg_stripe__charges') }})
-            when 'salesforce.opportunity' then
-                m.record_key not in (select opportunity_id from {{ ref('stg_salesforce__opportunities') }})
-        end
-    from manifest as m
-    where m.defect_code = 'D09'
-
-    union all
-
-    -- D13: a test-mode row is detected by livemode and handled when staging drops it.
-    select
-        m.defect_code, m.record_key,
-        true,
-        case m.source_table
-            when 'stripe.customer' then
-                m.record_key not in (select stripe_customer_id from {{ ref('stg_stripe__customers') }})
-            when 'stripe.invoice' then
-                m.record_key not in (select stripe_invoice_id from {{ ref('stg_stripe__invoices') }})
-            when 'stripe.charge' then
-                m.record_key not in (select stripe_charge_id from {{ ref('stg_stripe__charges') }})
-            when 'stripe.balance_transaction' then
-                m.record_key not in (
-                    select balance_transaction_id from {{ ref('stg_stripe__balance_transactions') }}
-                )
-        end
-    from manifest as m
-    where m.defect_code = 'D13'
+    left join {{ ref('int_stripe_customer_map') }} as map
+        on m.defect_code = 'D01' and map.stripe_customer_id = m.record_key
+    left join {{ source('truth', 'truth_identity') }} as ti
+        on m.defect_code = 'D01' and ti.tailnet_id = map.tailnet_id
+    left join {{ ref('stg_app__tailnets') }} as t
+        on m.defect_code = 'D03' and t.tailnet_id = m.record_key
+    left join mart_tailnets as mt on m.defect_code = 'D03' and mt.tailnet_id = m.record_key
+    left join double_synced as ds on m.defect_code = 'D06' and ds.id = m.record_key
+    left join staged as s
+        on m.defect_code in ('D06', 'D09', 'D13')
+        and s.record_key = m.record_key and s.source_table = m.source_table
 ),
 
 described as (

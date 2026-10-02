@@ -161,6 +161,12 @@ Status: Accepted
 - **Truth fence:** only `models/audit/` reads the answer key, and `scripts/check_truth_fence.py` enforces it in `make build`.
 - **No package dependencies:** the one multi-column uniqueness test is a local generic test.
 
+## ADR-021: Snowflake load and build
+
+Status: Accepted
+
+`make snowflake` is run by the owner, never by an agent session. `scripts/snowflake_load.py` reads `.env`, connects with key-pair authentication, and loads every Parquet file with `write_pandas` into the dbt target database as `RAW_<SOURCE>.<TABLE>`, with upper-case table and column names and logical types, replacing what is there. Then `dbt build --target snowflake` runs the same models and tests as DuckDB. Upper-case names let unquoted SQL resolve on both warehouses. The two keyword identifiers (Salesforce `ACCOUNT`, Orb `timestamp`) are quoted through the source config and the `quoted()` macro. Raw and modeled schemas share one database to keep grants simple. The Snowflake client is an optional dependency group, and the lock covers Linux and macOS only, because the client does not resolve for Windows.
+
 ## Dependency log
 
 Installed (`pyproject.toml`, locked in `uv.lock`):
@@ -173,12 +179,12 @@ Installed (`pyproject.toml`, locked in `uv.lock`):
 | free-email-domains | Builds the committed `seeds/free_email_domains.csv` |
 | pydantic, PyYAML | Config loading and validation |
 | dbt Core, dbt-duckdb | Transformations on DuckDB |
+| dbt-snowflake (brings snowflake-connector-python and cryptography) | Optional `snowflake` group: `make snowflake` |
 | pytest, Ruff, pre-commit | Tests, lint, and hooks (dev) |
 
 Planned, added with the PLAN task that first needs them:
 
 | Dependency | Purpose | Task |
 |---|---|---|
-| SQLFluff | SQL lint | c |
-| lkml | LookML parse test | d |
-| dbt-snowflake, snowflake-connector-python | Snowflake load and build | e |
+| lkml | LookML parse test | tier 2, item 6 |
+

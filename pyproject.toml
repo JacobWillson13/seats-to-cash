@@ -23,6 +23,9 @@ dev = [
     "pytest>=9.1.1",
     "ruff>=0.16.10",
 ]
+snowflake = [
+    "dbt-snowflake>=1.12.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.12,<0.13"]
@@ -54,3 +57,7 @@ select = ["E", "F", "I", "B", "UP", "TID251"]
 "uuid.uuid1".msg = "Use generator.ids for deterministic IDs."
 "uuid.uuid4".msg = "Use generator.ids for deterministic IDs."
 "numpy.random.seed".msg = "Pass numpy.random.default_rng(seed) explicitly."
+
+[tool.uv]
+# Lock for the platforms the project runs on; the Snowflake client does not resolve for Windows.
+environments = ["sys_platform == 'linux'", "sys_platform == 'darwin'"]
