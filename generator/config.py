@@ -1,8 +1,9 @@
 """Load and validate the simulation config (config/simulation.yml).
 
-A config file may name a base file with `extends:`; its keys are deep-merged over the base
-(ADR-022). Every problem surfaces as a ConfigError whose message names the file and the
-offending key.
+A config file may name a base file with `extends:`; its keys are deep-merged over the base.
+Every problem surfaces as a ConfigError whose message names the file and the offending key.
+Every section forbids unknown keys, so settings for features outside the project scope are
+rejected rather than silently ignored.
 """
 
 from __future__ import annotations
@@ -24,8 +25,6 @@ Multiplier = Annotated[float, Field(gt=0)]
 NonNegative = Annotated[float, Field(ge=0)]
 PositiveInt = Annotated[int, Field(gt=0)]
 NonNegativeInt = Annotated[int, Field(ge=0)]
-Marketplace = Literal["aws", "azure"]
-Currency = Literal["USD", "EUR", "GBP"]
 Role = Literal["admin", "billing_admin", "member"]
 DeviceOs = Literal["macos", "windows", "linux", "ios", "android"]
 
@@ -63,14 +62,8 @@ class Population(_Section):
     personal_tailnets: NonNegativeInt
     business_tailnets: NonNegativeInt
     signup_growth_monthly: Annotated[float, Field(gt=-1)]
-    currencies: dict[Currency, Probability]
     nonprofit_share: Probability
     internal_tailnets: NonNegativeInt
-
-    @model_validator(mode="after")
-    def _shares(self) -> Population:
-        _check_shares("currencies", self.currencies, total=1)
-        return self
 
 
 class People(_Section):
@@ -87,10 +80,6 @@ class People(_Section):
 
 
 class Personal(_Section):
-    plus_upgrade_monthly: Probability
-    plus_downgrade_monthly: Probability
-    plus_retirement_downgrade_share: Probability
-    plus_retirement_window_days: PositiveInt
     extra_users_mean: NonNegative
     monthly_active_share: Probability
 
@@ -143,7 +132,6 @@ class Activity(_Section):
     feature_daily_prob: dict[str, Probability]
     feature_attempts_mean: Annotated[float, Field(ge=1)]
     tagged_resources_mean: NonNegative
-    tagged_resources_overage_mean: NonNegative
     ephemeral_share: Probability
     ephemeral_minutes_mean: NonNegative
 
@@ -178,11 +166,6 @@ class Enterprise(_Section):
     term_months: dict[PositiveInt, Probability]
     discount_range: tuple[Probability, Probability]
     min_acv_usd: Annotated[float, Field(gt=0)]
-    services_attach_rate: Probability
-    services_delivery_lag_days: tuple[PositiveInt, PositiveInt]
-    services_amount_usd: tuple[NonNegative, NonNegative]
-    marketplace_share: dict[Marketplace, Probability]
-    multi_tailnet_share: Probability
     renewal_rate: Probability
     renewal_uplift_mean: NonNegative
     expansion_monthly: Probability
@@ -192,10 +175,7 @@ class Enterprise(_Section):
     def _ranges_and_shares(self) -> Enterprise:
         _check_range("lead_to_close_lag_days", self.lead_to_close_lag_days)
         _check_range("discount_range", self.discount_range)
-        _check_range("services_amount_usd", self.services_amount_usd)
-        _check_range("services_delivery_lag_days", self.services_delivery_lag_days)
         _check_shares("term_months", self.term_months, total=1)
-        _check_shares("marketplace_share", self.marketplace_share, total=None)
         if bad := sorted(t for t in self.term_months if t % 12):
             raise ValueError(f"term_months keys must be whole years (multiples of 12), got {bad}")
         return self
@@ -212,11 +192,6 @@ class Migration(_Section):
     high_uplift_churn_multiplier: Multiplier
 
 
-class Addons(_Section):
-    tagged_resource_overage_share: Probability
-    mullvad_attach_rate: Probability
-
-
 class Payments(_Section):
     card_fee_pct: Probability
     card_fee_fixed_cents: NonNegativeInt
@@ -224,7 +199,6 @@ class Payments(_Section):
     ach_fee_cap_cents: NonNegativeInt
     payout_lag_days: NonNegativeInt
     refund_rate: Probability
-    marketplace_fee_pct: dict[Marketplace, Probability]
 
 
 class Sync(_Section):
@@ -240,30 +214,17 @@ class Sync(_Section):
 
 
 class Defects(_Section):
-    """Rates per defect denominator (SPEC 5). D03 is population.internal_tailnets."""
+    """Rates for the six planted defects (SPEC 3, ADR-010), each over its own denominator.
+
+    D03 has no rate: it is the count `population.internal_tailnets`. No other defect code is
+    accepted; an unknown key fails validation.
+    """
 
     D01_duplicate_stripe_customer: Probability
-    D02_sf_missing_tailnet_id: Probability
-    D02_sf_mistyped_tailnet_id: Probability
-    D04_month_end_early_invoices: Probability
     D05_late_rows: Probability
     D06_duplicate_stripe_sync: Probability
-    D07_marketplace_bad_opp_ref: Probability
-    D08_crm_amount_includes_nonrecurring: Probability
     D09_soft_deleted_rows: Probability
-    D10_manual_adj_missing_approver: Probability
-    D10_manual_adj_name_ref: Probability
-    D11_orphan_charge: Probability
-    D12_orb_quantity_lag: Probability
     D13_test_mode_rows: Probability
-
-    @model_validator(mode="after")
-    def _subtypes(self) -> Defects:
-        if self.D02_sf_missing_tailnet_id + self.D02_sf_mistyped_tailnet_id > 1:
-            raise ValueError("D02 missing and mistyped rates must sum to at most 1")
-        if self.D10_manual_adj_missing_approver + self.D10_manual_adj_name_ref > 1:
-            raise ValueError("D10 missing-approver and name-ref rates must sum to at most 1")
-        return self
 
 
 class Output(_Section):
@@ -292,7 +253,6 @@ class SimulationConfig(_Section):
     enterprise: Enterprise
     crm: Crm
     migration: Migration
-    addons: Addons
     payments: Payments
     sync: Sync
     defects: Defects
@@ -300,7 +260,7 @@ class SimulationConfig(_Section):
 
     @property
     def forced_migration_effective_date(self) -> dt.date:
-        """The first billing cycle after the legacy deadline (SPEC 2.5)."""
+        """The first billing cycle after the legacy deadline (SPEC §2)."""
         return first_of_next_month(self.legacy_forced_migration_date)
 
     @model_validator(mode="after")
@@ -352,10 +312,6 @@ class SimulationConfig(_Section):
                 "crm.account_seat_threshold must not exceed enterprise.lead_seat_threshold, "
                 "or enterprise leads would have no Salesforce account"
             )
-        if missing := sorted(
-            set(self.enterprise.marketplace_share) - set(self.payments.marketplace_fee_pct)
-        ):
-            raise ValueError(f"payments.marketplace_fee_pct is missing {missing}")
         return self
 
 
@@ -388,10 +344,46 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return merged
 
 
+# Settings for features removed from the project scope. Their code paths are gone, so any
+# value would be silently meaningless; validation names the feature instead.
+REMOVED_KEYS = {
+    "population.currencies": "multi-currency (the project is USD only)",
+    "personal.plus_upgrade_monthly": "Personal Plus",
+    "personal.plus_downgrade_monthly": "Personal Plus",
+    "personal.plus_retirement_downgrade_share": "Personal Plus",
+    "personal.plus_retirement_window_days": "Personal Plus",
+    "activity.tagged_resources_overage_mean": "add-ons",
+    "addons": "add-ons",
+    "enterprise.services_attach_rate": "services",
+    "enterprise.services_delivery_lag_days": "services",
+    "enterprise.services_amount_usd": "services",
+    "enterprise.marketplace_share": "marketplace",
+    "payments.marketplace_fee_pct": "marketplace",
+    "enterprise.multi_tailnet_share": "multi-tailnet enterprise",
+    **{
+        f"defects.{key}": "defects other than D01, D03, D05, D06, D09, D13"
+        for key in (
+            "D02_sf_missing_tailnet_id",
+            "D02_sf_mistyped_tailnet_id",
+            "D04_month_end_early_invoices",
+            "D07_marketplace_bad_opp_ref",
+            "D08_crm_amount_includes_nonrecurring",
+            "D10_manual_adj_missing_approver",
+            "D10_manual_adj_name_ref",
+            "D11_orphan_charge",
+            "D12_orb_quantity_lag",
+        )
+    },
+}
+
+
 def _describe(error: dict[str, Any]) -> str:
     where = ".".join(str(part) for part in error["loc"]) or "(top level)"
+    unknown = "unknown key"
+    if where in REMOVED_KEYS:
+        unknown = f"removed from scope ({REMOVED_KEYS[where]}); delete this key"
     message = {
-        "extra_forbidden": "unknown key",
+        "extra_forbidden": unknown,
         "missing": "missing required key",
     }.get(error["type"], error["msg"].removeprefix("Value error, "))
     if error["type"] in ("extra_forbidden", "missing") or isinstance(error["input"], dict):
@@ -411,12 +403,9 @@ def load_config(path: Path | str) -> SimulationConfig:
 
 
 def cross_check(config: SimulationConfig, seeds: Seeds) -> None:
-    """Check values the config duplicates from the seeds (X5) and seed coverage of the window."""
+    """Check values the config duplicates from the seeds and seed coverage of the window."""
     problems = _price_book_problems(config, seeds.price_book)
     day = dt.timedelta(days=1)
-
-    if missing := sorted(set(config.population.currencies) - set(seeds.price_book.currencies)):
-        problems.append(f"price book has no unit_amount column for currencies {missing}")
 
     if unknown := sorted(set(config.people.webmail_domains) - seeds.public_email_domains):
         problems.append(f"people.webmail_domains are not public email domains: {unknown}")
@@ -434,13 +423,6 @@ def cross_check(config: SimulationConfig, seeds: Seeds) -> None:
         problems.append(
             f"extract_date {config.extract_date} is too early: the last close ({last_close}) "
             f"plus the longest late-row lag ({config.sync.late_row_lag_days[1]} days) is later"
-        )
-
-    fx_start, fx_end = seeds.fx.date_range
-    if fx_start > config.sim_start_date or fx_end < config.end_date:
-        problems.append(
-            f"fx_rates.csv covers {fx_start} .. {fx_end}, "
-            f"not the full {config.sim_start_date} .. {config.end_date}"
         )
 
     if problems:

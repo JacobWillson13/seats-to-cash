@@ -1,4 +1,4 @@
-# CI config: simulation.yml with population sizes cut to 10% (ADR-022).
+# CI config: simulation.yml with population sizes cut to 10%.
 # Keys here are deep-merged over the base file; everything else is inherited.
 extends: simulation.yml
 

@@ -23,7 +23,7 @@ def test_ci_config_is_a_ten_percent_overlay():
     assert ci.population.personal_tailnets == base.population.personal_tailnets // 10
     assert ci.population.business_tailnets == base.population.business_tailnets // 10
     assert ci.population.internal_tailnets == base.population.internal_tailnets // 10
-    assert ci.population.currencies == base.population.currencies  # merged, not replaced
+    assert ci.population.nonprofit_share == base.population.nonprofit_share  # merged
     assert ci.enterprise.direct_sales_accounts == 3
     ci_common = ci.model_dump(exclude={"population", "enterprise"})
     base_common = base.model_dump(exclude={"population", "enterprise"})
@@ -42,8 +42,7 @@ def test_ci_config_is_a_ten_percent_overlay():
         ),
         ({"trial.lenght_days": 14}, "trial.lenght_days: unknown key"),
         ({"churn.dunning_days": DELETE}, "churn.dunning_days: missing required key"),
-        ({"population.currencies": {"USD": 0.9, "EUR": 0.2}}, "currencies must sum to 1"),
-        ({"population.currencies": {"USD": 0.9, "JPY": 0.1}}, "population.currencies.JPY.[key]"),
+        ({"seats.role_shares": {"admin": 0.5, "member": 0.6}}, "role_shares must sum to 1"),
         ({"enterprise.discount_range": [0.35, 0.10]}, "discount_range must be [low, high]"),
         ({"enterprise.term_months": {12: 0.5, 18: 0.5}}, "multiples of 12"),
         ({"end_date": dt.date(2027, 1, 1)}, "end_date must be on or before extract_date"),
@@ -59,6 +58,25 @@ def test_invalid_config_names_the_problem(write_config, changes, expected):
         load_config(path)
     assert str(path) in str(exc.value)
     assert expected in str(exc.value)
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "feature"),
+    [
+        ("population.currencies", {"USD": 0.9, "EUR": 0.1}, "multi-currency"),
+        ("personal.plus_upgrade_monthly", 0.002, "Personal Plus"),
+        ("enterprise.marketplace_share", {"aws": 0.2}, "marketplace"),
+        ("enterprise.services_attach_rate", 0.3, "services"),
+        ("enterprise.multi_tailnet_share", 0.15, "multi-tailnet enterprise"),
+        ("addons", {"mullvad_attach_rate": 0.05}, "add-ons"),
+        ("payments.marketplace_fee_pct", {"aws": 0.03}, "marketplace"),
+        ("defects.D02_sf_missing_tailnet_id", 0.15, "defects other than"),
+        ("defects.D12_orb_quantity_lag", 0.0, "defects other than"),
+    ],
+)
+def test_removed_features_are_rejected(write_config, key, value, feature):
+    with pytest.raises(ConfigError, match=rf"{key}: removed from scope \({feature}"):
+        load_config(write_config({key: value}))
 
 
 def test_unreadable_configs_fail_clearly(tmp_path):

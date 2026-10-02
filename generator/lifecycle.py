@@ -1,4 +1,4 @@
-"""Tailnet state machine (SPEC 4.2) and the planted mechanisms (SPEC 4.3).
+"""Tailnet state machine and the planted mechanisms behind the generated facts (SPEC §2).
 
 The transition table is data: TRANSITIONS lists every allowed edge with its trigger and the
 config keys that set its rate, and tests check every logged transition against it.
@@ -17,21 +17,20 @@ from generator.clock import PHASE_LIFECYCLE, daily_probability
 
 class State(IntEnum):
     PERSONAL_FREE = 0
-    PERSONAL_PLUS = 1
-    BUSINESS_TRIAL = 2
-    STARTER = 3
-    STANDARD = 4
-    PREMIUM = 5
-    ENTERPRISE = 6
-    PAST_DUE = 7
-    CHURNED = 8
+    BUSINESS_TRIAL = 1
+    STARTER = 2
+    STANDARD = 3
+    PREMIUM = 4
+    ENTERPRISE = 5
+    PAST_DUE = 6
+    CHURNED = 7
 
 
 SIGNUP = -1  # pseudo-state: the tailnet doesn't exist yet
 NOT_CREATED = -1
 
 SELF_SERVE = frozenset({State.STARTER, State.STANDARD, State.PREMIUM})
-PAID = SELF_SERVE | {State.PERSONAL_PLUS, State.ENTERPRISE}
+PAID = SELF_SERVE | {State.ENTERPRISE}
 LIVE_BUSINESS = SELF_SERVE | {State.BUSINESS_TRIAL, State.ENTERPRISE, State.PAST_DUE}
 
 
@@ -39,11 +38,7 @@ class Trigger(IntEnum):
     SIGNUP_PERSONAL = 1
     SIGNUP_BUSINESS = 2
     SIGNUP_INTERNAL = 3
-    SIGNUP_ENTERPRISE_TAILNET = 4
     SIGNUP_DIRECT_ENTERPRISE = 24
-    PLUS_UPGRADE = 5
-    PLUS_DOWNGRADE = 6
-    PLUS_RETIREMENT = 7
     TRIAL_CONVERT = 8
     TRIAL_FALLBACK = 9
     UPGRADE_STANDARD_PREMIUM = 10
@@ -75,7 +70,6 @@ def _s(*states) -> frozenset[int]:
     return frozenset(int(s) for s in states)
 
 
-_PAYABLE = (*SELF_SERVE, State.PERSONAL_PLUS)
 TRANSITIONS: tuple[Edge, ...] = (
     Edge(Trigger.SIGNUP_PERSONAL, _s(SIGNUP), _s(State.PERSONAL_FREE), None,
          ("population.personal_tailnets", "population.signup_growth_monthly")),
@@ -83,16 +77,8 @@ TRANSITIONS: tuple[Edge, ...] = (
          ("population.business_tailnets", "population.signup_growth_monthly", "trial.length_days")),
     Edge(Trigger.SIGNUP_INTERNAL, _s(SIGNUP), _s(*SELF_SERVE), None,
          ("population.internal_tailnets",)),
-    Edge(Trigger.SIGNUP_ENTERPRISE_TAILNET, _s(SIGNUP), _s(State.ENTERPRISE), None,
-         ("enterprise.multi_tailnet_share",)),
     Edge(Trigger.SIGNUP_DIRECT_ENTERPRISE, _s(SIGNUP), _s(State.ENTERPRISE), None,
          ("enterprise.direct_sales_accounts", "enterprise.lead_to_close_lag_days")),
-    Edge(Trigger.PLUS_UPGRADE, _s(State.PERSONAL_FREE), _s(State.PERSONAL_PLUS), "self_serve",
-         ("personal.plus_upgrade_monthly",)),
-    Edge(Trigger.PLUS_DOWNGRADE, _s(State.PERSONAL_PLUS), _s(State.PERSONAL_FREE), "self_serve",
-         ("personal.plus_downgrade_monthly",)),
-    Edge(Trigger.PLUS_RETIREMENT, _s(State.PERSONAL_PLUS), _s(State.PERSONAL_FREE), "self_serve",
-         ("personal.plus_retirement_downgrade_share", "personal.plus_retirement_window_days")),
     Edge(Trigger.TRIAL_CONVERT, _s(State.BUSINESS_TRIAL),
          _s(State.STARTER, State.STANDARD, State.PREMIUM), "trial_end",
          ("trial.base_conversion", "trial.bring_to_work_multiplier",
@@ -112,21 +98,20 @@ TRANSITIONS: tuple[Edge, ...] = (
     Edge(Trigger.MIGRATION_FORCED, _s(State.STARTER, State.PREMIUM),
          _s(State.STANDARD, State.PREMIUM), "migration_forced",
          ("legacy_forced_migration_date",)),
-    Edge(Trigger.PAYMENT_FAILED, _s(*_PAYABLE), _s(State.PAST_DUE), None,
+    Edge(Trigger.PAYMENT_FAILED, _s(*SELF_SERVE), _s(State.PAST_DUE), None,
          ("churn.payment_failure_rate",)),
-    Edge(Trigger.PAYMENT_RECOVERED, _s(State.PAST_DUE), _s(*_PAYABLE), None,
+    Edge(Trigger.PAYMENT_RECOVERED, _s(State.PAST_DUE), _s(*SELF_SERVE), None,
          ("churn.dunning_recovery_rate", "churn.dunning_days")),
     Edge(Trigger.DUNNING_EXPIRED, _s(State.PAST_DUE), _s(State.CHURNED), "dunning",
          ("churn.dunning_recovery_rate", "churn.dunning_days")),
     Edge(Trigger.CHURN_VOLUNTARY, _s(*SELF_SERVE), _s(State.CHURNED), "self_serve",
          ("churn.voluntary_monthly", "seats.low_utilization_hazard_multiplier",
           "migration.high_uplift_churn_multiplier")),
-    Edge(Trigger.REACTIVATION, _s(State.CHURNED), _s(*_PAYABLE), "self_serve",
+    Edge(Trigger.REACTIVATION, _s(State.CHURNED), _s(*SELF_SERVE), "self_serve",
          ("churn.reactivation_monthly",)),
     Edge(Trigger.ENTERPRISE_CLOSE, _s(*SELF_SERVE), _s(State.ENTERPRISE), "sales",
          ("enterprise.lead_seat_threshold", "enterprise.lead_to_close",
-          "enterprise.lead_to_close_lag_days", "enterprise.term_months",
-          "enterprise.marketplace_share")),
+          "enterprise.lead_to_close_lag_days", "enterprise.term_months")),
     Edge(Trigger.ENTERPRISE_RENEWAL, _s(State.ENTERPRISE), _s(State.ENTERPRISE), "sales",
          ("enterprise.renewal_rate", "enterprise.renewal_uplift_mean")),
     Edge(Trigger.ENTERPRISE_NONRENEWAL, _s(State.ENTERPRISE), _s(State.CHURNED), "sales",
@@ -139,16 +124,14 @@ ALLOWED = frozenset((e.trigger, s, t) for e in TRANSITIONS for s in e.sources fo
 CHANGE_SOURCE = {e.trigger: e.change_source for e in TRANSITIONS}
 # Transitions that start a plan term; none may start a v3 plan on or after v4_effective_date.
 PLAN_STARTS = frozenset({
-    Trigger.SIGNUP_INTERNAL, Trigger.SIGNUP_ENTERPRISE_TAILNET,
-    Trigger.SIGNUP_DIRECT_ENTERPRISE, Trigger.PLUS_UPGRADE,
-    Trigger.TRIAL_CONVERT, Trigger.UPGRADE_STANDARD_PREMIUM, Trigger.UPGRADE_STARTER_PREMIUM,
+    Trigger.SIGNUP_INTERNAL, Trigger.SIGNUP_DIRECT_ENTERPRISE, Trigger.TRIAL_CONVERT,
+    Trigger.UPGRADE_STANDARD_PREMIUM, Trigger.UPGRADE_STARTER_PREMIUM,
     Trigger.DOWNGRADE_PREMIUM, Trigger.MIGRATION_VOLUNTARY, Trigger.MIGRATION_FORCED,
     Trigger.REACTIVATION, Trigger.ENTERPRISE_CLOSE, Trigger.ENTERPRISE_RENEWAL,
 })  # fmt: skip
 
 PLAN_STATES = (
     State.PERSONAL_FREE,
-    State.PERSONAL_PLUS,
     State.STARTER,
     State.STANDARD,
     State.PREMIUM,
@@ -169,11 +152,10 @@ def plan_codes(book) -> tuple[str, ...]:
 
 
 _PLAN_OF_STATE = {
-    State.PERSONAL_FREE: 0, State.PERSONAL_PLUS: 1, State.BUSINESS_TRIAL: 4, State.STARTER: 2,
-    State.STANDARD: 3, State.PREMIUM: 4, State.ENTERPRISE: 5, State.CHURNED: 0,
+    State.PERSONAL_FREE: 0, State.BUSINESS_TRIAL: 3, State.STARTER: 1, State.STANDARD: 2,
+    State.PREMIUM: 3, State.ENTERPRISE: 4, State.CHURNED: 0,
 }  # fmt: skip
 PLAN_OF_STATE = np.array([_PLAN_OF_STATE.get(State(s), -1) for s in range(len(State))], np.int8)
-CHANNELS = ("direct", "aws_marketplace", "azure_marketplace")
 
 
 def plan_state(state: np.ndarray, prev_state: np.ndarray) -> np.ndarray:
@@ -206,7 +188,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
     v4_era = t >= sim.v4_day
     internal = b.kind == 1
 
-    # Trial end (SPEC 2.4): convert or fall back to Personal.
+    # Trial end: convert or fall back to Personal.
     ending = np.flatnonzero((b.state == State.BUSINESS_TRIAL) & (b.trial_end_day == t))
     if ending.size:
         u = rng.random((2, ending.size))
@@ -224,7 +206,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
         sim.go_dormant(lose, t, sec[lose])
         done[ending] = True
 
-    # Dunning resolves (SPEC 4.2): recovery or involuntary churn.
+    # Dunning resolves: recovery or involuntary churn.
     resolving = np.flatnonzero((b.state == State.PAST_DUE) & (b.dunning_day == t) & ~done)
     if resolving.size:
         ok = b.dunning_recovers[resolving]
@@ -257,7 +239,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
         sim.transition(fail, t, sec[fail], Trigger.PAYMENT_FAILED, State.PAST_DUE, b.version[fail])
         done[fail] = True
 
-        # Voluntary migration to v4, effective on the 1st (SPEC 2.5).
+        # Voluntary migration to v4, effective on the 1st (SPEC §2).
         if v4_era:
             movers = np.flatnonzero(legacy & ~done)
             mult = np.where(
@@ -272,7 +254,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
     _enterprise(sim, t, rng, sec, done, version_now)
     _self_serve_hazards(sim, t, rng, sec, done, version_now)
 
-    # Reactivation: back to the same tier on the current price version (SPEC 2.5).
+    # Reactivation: back to the same tier on the current price version.
     churned = np.flatnonzero(
         (b.state == State.CHURNED) & np.isin(b.prev_state, list(SELF_SERVE)) & ~internal & ~done
     )
@@ -290,26 +272,17 @@ def _enterprise(sim, t, rng, sec, done, version_now):
     internal = b.kind == 1
     self_serve = np.isin(b.state, list(SELF_SERVE)) & ~internal
 
-    # Leads close into contracts after a lag (SPEC 2.6).
+    # PLG leads close into contracts after a lag.
     closing = np.flatnonzero((b.close_day == t) & self_serve & ~done)
     if closing.size:
         terms = sim.draw_terms(rng, closing.size)
-        channel = rng.choice(
-            3, size=closing.size,
-            p=[1 - sum(e.marketplace_share.values()),
-               e.marketplace_share.get("aws", 0.0), e.marketplace_share.get("azure", 0.0)],
-        )  # fmt: skip
         sim.transition(closing, t, sec[closing], Trigger.ENTERPRISE_CLOSE, State.ENTERPRISE,
                        version_now)  # fmt: skip
         b.term_months[closing] = terms
         b.term_end_day[closing] = [sim.term_end(t, m) for m in terms]
-        b.channel[closing] = channel
         sim.ensure_seats(closing, t, sec[closing], "system", always_record=True)
         enterprise.record(sim, closing, t, sec[closing], "close", rng)
         done[closing] = True
-        spawn = closing[rng.random(closing.size) < e.multi_tailnet_share]
-        for parent in spawn.tolist():
-            sim.request_spawn(parent, int(sec[parent]) + 1)
 
     # Seat count reaching the threshold makes a lead; some close after a lag.
     size = np.maximum(b.held, b.occupied + b.pending)
@@ -320,13 +293,10 @@ def _enterprise(sim, t, rng, sec, done, version_now):
     lo, hi = e.lead_to_close_lag_days
     b.close_day[closes] = t + rng.integers(lo, hi + 1, size=closes.size)
 
-    # Term end: renew (legacy terms move to v4) or churn; extra tailnets follow their parent.
+    # Term end: renew (legacy terms move to v4) or churn.
     ending = np.flatnonzero((b.state == State.ENTERPRISE) & (b.term_end_day == t) & ~done)
     if ending.size:
         renew = rng.random(ending.size) < e.renewal_rate
-        parent = b.parent[ending]
-        decided = dict(zip(ending.tolist(), renew.tolist(), strict=True))
-        renew = np.array([decided.get(p, r) for p, r in zip(parent.tolist(), renew, strict=True)])
         kept, lost = ending[renew], ending[~renew]
         sim.transition(kept, t, sec[kept], Trigger.ENTERPRISE_RENEWAL, State.ENTERPRISE,
                        version_now)  # fmt: skip
@@ -406,86 +376,17 @@ def _self_serve_hazards(sim, t, rng, sec, done, version_now):
 
 
 def simulate_personal(sim) -> None:
-    """Monthly loop over personal tailnets: Personal Plus upgrades, downgrades, the v4
-    retirement, payment failures, and reactivation (SPEC 2.5, 4.2)."""
-    from generator.rng import Stream, period_rng
-
-    cfg, cal, p = sim.config, sim.cal, sim.pop.personal
+    """Personal tailnets are free and never billed: log each signup, month by month."""
+    cal, p = sim.cal, sim.pop.personal
     n = p.created_day.size
     state = np.full(n, NOT_CREATED, np.int8)
     version = np.zeros(n, np.int8)
-    v4_day = sim.v4_day
-    day_p = {
-        "up": cfg.personal.plus_upgrade_monthly,
-        "down": cfg.personal.plus_downgrade_monthly,
-        "react": cfg.churn.reactivation_monthly,
-    }
-    lo, hi = PHASE_LIFECYCLE
     for m in range(len(cal.months)):
-        rng = period_rng(cfg.seed, Stream.PERSONAL_MONTH, m)
         start, end = int(cal.month_start[m]), int(cal.month_end[m])
-
         new = np.flatnonzero((p.created_day >= start) & (p.created_day <= end))
         state[new] = State.PERSONAL_FREE
-        version[new] = np.where(p.created_day[new] >= v4_day, 4, 3)
+        version[new] = np.where(p.created_day[new] >= sim.v4_day, 4, 3)
         sim.log_personal(new, p.created_day[new], p.created_sec[new], Trigger.SIGNUP_PERSONAL,
                          SIGNUP, 0, State.PERSONAL_FREE, version[new])  # fmt: skip
-
-        # 1st-of-month invoice for Personal Plus: failure, then recovery or churn in dunning.
-        plus = np.flatnonzero((state == State.PERSONAL_PLUS) & (p.created_day < start))
-        u = rng.random((3, plus.size))
-        fail = plus[u[0] < cfg.churn.payment_failure_rate]
-        recovers = u[1][u[0] < cfg.churn.payment_failure_rate] < cfg.churn.dunning_recovery_rate
-        sec = rng.integers(lo, hi, size=(2, fail.size))
-        resolve = start + np.where(
-            recovers, rng.integers(1, cfg.churn.dunning_days + 1, size=fail.size),
-            cfg.churn.dunning_days,
-        )  # fmt: skip
-        sim.log_personal(fail, start, sec[0], Trigger.PAYMENT_FAILED, State.PERSONAL_PLUS, 3,
-                         State.PAST_DUE, 3)  # fmt: skip
-        ok, bad = fail[recovers], fail[~recovers]
-        sim.log_personal(ok, resolve[recovers], sec[1][recovers], Trigger.PAYMENT_RECOVERED,
-                         State.PAST_DUE, 3, State.PERSONAL_PLUS, 3)  # fmt: skip
-        churn_version = np.where(resolve[~recovers] >= v4_day, 4, 3)
-        sim.log_personal(bad, resolve[~recovers], sec[1][~recovers], Trigger.DUNNING_EXPIRED,
-                         State.PAST_DUE, 3, State.CHURNED, churn_version)  # fmt: skip
-        state[bad] = State.CHURNED
-        version[bad] = churn_version
-        failed_now = np.zeros(n, bool)
-        failed_now[fail] = True
-
-        # Other monthly events: at most one per tailnet, on a day inside the month.
-        u = rng.random((3, n))
-        candidates = []
-        if start < v4_day:  # Personal Plus is sold only before v4
-            free = (state == State.PERSONAL_FREE) & (p.created_day < end)
-            first = np.maximum(start, p.created_day + 1)
-            last = min(end, v4_day - 1)
-            ok = free & (first <= last) & (u[0] < day_p["up"])
-            day = first + (u[2] * (last - first + 1)).astype(np.int64)
-            candidates.append((ok, day, Trigger.PLUS_UPGRADE, State.PERSONAL_PLUS))
-            react = (state == State.CHURNED) & (u[0] < day_p["react"])
-            day = start + (u[2] * (min(end, v4_day - 1) - start + 1)).astype(np.int64)
-            candidates.append((react, day, Trigger.REACTIVATION, State.PERSONAL_PLUS))
-        active_plus = (state == State.PERSONAL_PLUS) & ~failed_now
-        retire_day = v4_day + p.plus_retire_offset
-        retire = active_plus & p.plus_retire & (retire_day >= start) & (retire_day <= end)
-        retire &= retire_day >= v4_day
-        candidates.append((retire, retire_day, Trigger.PLUS_RETIREMENT, State.PERSONAL_FREE))
-        down = active_plus & ~retire & (u[1] < day_p["down"])
-        day = start + (u[2] * (end - start + 1)).astype(np.int64)
-        candidates.append((down, day, Trigger.PLUS_DOWNGRADE, State.PERSONAL_FREE))
-
-        for mask, day, trigger, target in candidates:
-            idx = np.flatnonzero(mask)
-            d = np.broadcast_to(day, (n,))[idx]
-            from_state = state[idx].copy()
-            new_version = np.where(d >= v4_day, 4, 3) if target == State.PERSONAL_FREE else 3
-            sim.log_personal(idx, d, rng.integers(lo, hi, size=idx.size), trigger, from_state,
-                             version[idx], target, new_version)  # fmt: skip
-            state[idx] = target
-            version[idx] = new_version
-
-        sim.stats.personal_month_end(m, state)
     sim.personal_state = state
     sim.personal_version = version

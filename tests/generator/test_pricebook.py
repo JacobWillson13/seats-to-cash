@@ -29,20 +29,22 @@ def test_retired_and_future_plans_are_not_sold(book):
 def test_grandfathered_prices_stay_billable_by_id(book):
     starter = book.price("v3_starter")
     assert not starter.on_sale(dt.date(2026, 9, 1))
-    assert starter.unit_amount("USD") == Decimal("6.00")
+    assert starter.unit_amount() == Decimal("6.00")
     assert starter.free_units == 3
 
 
-def test_local_currency_prices(book):
-    standard = book.price("v4_standard")
-    assert [standard.unit_amount(c) for c in ("USD", "EUR", "GBP")] == [
-        Decimal("8.00"),
-        Decimal("7.00"),
-        Decimal("7.00"),
-    ]
-    assert book.currencies == ("USD", "EUR", "GBP")
-    with pytest.raises(LookupError, match="v4_enterprise has no list price in USD"):
-        book.price("v4_enterprise").unit_amount("USD")
+def test_usd_prices_and_contract_pricing(book):
+    assert book.price("v4_standard").unit_amount() == Decimal("8.00")
+    with pytest.raises(LookupError, match="v4_enterprise has no list price"):
+        book.price("v4_enterprise").unit_amount()
+
+
+def test_price_book_rejects_other_currency_columns(tmp_path):
+    lines = (SEEDS / "price_book.csv").read_text().splitlines()
+    path = tmp_path / "price_book.csv"
+    path.write_text("\n".join([lines[0] + ",unit_amount_eur", *(line + "," for line in lines[1:])]))
+    with pytest.raises(PriceBookError, match="USD is the only currency"):
+        PriceBook.load(path)
 
 
 def test_discounts(book):
@@ -51,8 +53,8 @@ def test_discounts(book):
 
 
 def test_ambiguous_plan_code_points_to_price_id(book):
-    with pytest.raises(LookupError, match=r"'addon' is ambiguous .* look it up with price\(\)"):
-        book.list_price("addon", dt.date(2026, 5, 1))
+    with pytest.raises(LookupError, match=r"'discount' is ambiguous .* look it up with price\(\)"):
+        book.list_price("discount", dt.date(2026, 5, 1))
 
 
 def test_unknown_price_id(book):
@@ -68,6 +70,6 @@ def test_malformed_price_book_reports_the_line(tmp_path):
         PriceBookError, match=rf"line {len(lines) + 1}: duplicate price_id v3_personal"
     ):
         PriceBook.load(path)
-    path.write_text("\n".join([lines[0], lines[1].replace(",0.00,", ",,", 1)]) + "\n")
-    with pytest.raises(PriceBookError, match=r"line 2: v3_personal has amounts in some currencies"):
+    path.write_text("\n".join([lines[0], lines[1].replace(",0.00,", ",-1.00,", 1)]) + "\n")
+    with pytest.raises(PriceBookError, match=r"line 2: v3_personal has a negative unit amount"):
         PriceBook.load(path)

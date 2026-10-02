@@ -8,17 +8,19 @@ Status: Accepted
 
 Wirefern and every generated customer are fictional. Generated dates come from config and the simulation clock; there is no wall-clock dependency or unseeded randomness. `.example` is used for invented company domains.
 
+Randomness comes from explicit NumPy generators keyed by the config seed and fixed integers (`generator/rng.py`): one stream per entity for population draws, and one stream per day or month for the simulation loop. Two runs with the same seed and config write byte-identical Parquet.
+
 ## ADR-002: Source ownership
 
 Status: Accepted
 
-`raw_app` owns customer, seat, and activity facts; Orb owns subscriptions and invoices; Stripe owns collection facts; Salesforce owns enterprise accounts and opportunities; Finance owns manual adjustments. The generator's answer key is audit-only. dbt derives business facts from the raw sources.
+`raw_app` owns customer, seat, and activity facts; Orb owns subscriptions and invoices; Stripe owns collection facts; Salesforce owns enterprise accounts and opportunities; Finance owns manual adjustments. The generator's answer key is audit-only. dbt derives business facts from the raw sources. Orb's role and its export field names are modeling assumptions, not a copy of a real Orb account.
 
 ## ADR-003: USD price book
 
 Status: Accepted
 
-The committed USD values in `seeds/price_book.csv` are the single price authority. Existing subscriptions retain their recorded price ID through sale-window changes. No source or mart hardcodes list prices.
+The committed `unit_amount_usd` values in `seeds/price_book.csv` are the single price authority, and USD is the only currency: the price book loader rejects any other `unit_amount_<currency>` column. Existing subscriptions retain their recorded price ID through sale-window changes. No source or mart hardcodes list prices. Pre-v4 (v3) prices are illustrative.
 
 ## ADR-004: DuckDB first, Snowflake compatible
 
@@ -48,7 +50,7 @@ For plan and price changes, split the value change into quantity movement at pri
 
 Status: Accepted
 
-Existing mutable `raw_app` tables keep their version-log treatment. Other mutable entity rows use their creation timestamp for the `as_of_ts` staging gate; append-only rows use their load timestamp. Close snapshots are immutable after posting.
+Existing mutable `raw_app` tables keep their version-log treatment (Fivetran history mode). Other mutable entity rows use their creation timestamp for the `as_of_ts` staging gate; append-only rows use their load timestamp. Close snapshots are immutable after posting.
 
 ## ADR-009: Revenue and refunds
 
@@ -60,20 +62,44 @@ Recognize v3 usage in its service month, v4 seats over the billed calendar days,
 
 Status: Accepted
 
-Only D01 duplicate Stripe customer, D03 internal tailnets, D05 late refunds and credit notes, D06 duplicate Stripe sync, D09 soft deletes, and D13 Stripe test-mode rows are planted. Defects are introduced after clean answer-key generation and carry a manifest record.
+Only D01 duplicate Stripe customer, D03 internal tailnets, D05 late refunds and credit notes, D06 duplicate Stripe sync, D09 soft deletes, and D13 Stripe test-mode rows are planted. Defects are introduced after clean answer-key generation and carry a manifest record. D03 is generated with the population (internal tailnets on `wirefern.example` with a 100% discount) rather than injected later. Config has a rate key for each of the other five and validation rejects keys for any other defect code.
 
 ## ADR-011: Provisional invoice policy
 
 Status: Proposed. Owner: Finance Controller.
 
-Invoice lines round half up to cents; subtotal sums rounded lines and tax is zero. Enterprise invoices cover one contract year at signing and each anniversary, never the whole term upfront. Unpaid invoices that end in involuntary churn receive adjustment credit notes with reason `uncollectible`. See `BILLING_DESIGN.md` for testable examples.
+Invoice lines round half up to cents; subtotal sums rounded lines and tax is zero. Enterprise invoices cover one contract year at signing and each anniversary, never the whole term upfront. Unpaid invoices that end in involuntary churn receive adjustment credit notes with reason `uncollectible`. The generator implements this provisional policy; see `BILLING_DESIGN.md` for testable examples. A Finance change to the policy means a generator change.
+
+## ADR-012: Features define scope, not raw tables
+
+Status: Accepted
+
+Scope is set by features: plans, defects, metrics, and outputs. Raw tables the generator already writes and tests stay, even when no mart needs them (for example Orb `plans`, `prices`, `subscription_quantity_changes`, `events`, and `daily_line_item_revenue`, and Salesforce `lead` and `user`). Every landed table is documented in `SCHEMAS.md` and staged by dbt; the marts read only what the story needs. Features outside the project scope have no code path, and config validation rejects their settings by name.
+
+## ADR-013: Two enterprise sources
+
+Status: Accepted
+
+Enterprise contracts come from product-led growth and from direct sales. A PLG tailnet that reaches `enterprise.lead_seat_threshold` seats becomes a lead and closes at `enterprise.lead_to_close` after a lag; its opportunity has `lead_source` `Product Qualified Lead`. A direct-sales account (`enterprise.direct_sales_accounts`) appears in Salesforce as a lead with `lead_source` `Inbound` or `Outbound` before any product tailnet exists; its tailnet is created on the signing date. `truth_enterprise_contracts.enterprise_source` records `plg` or `direct` for every contract event. Direct-sales deals are simulated after the PLG cohort in their own pass, so adding them does not change any PLG draw. At seed 42 the default config closes 60 contracts in the window, 30 from each source.
 
 ## Dependency log
+
+Installed (`pyproject.toml`, locked in `uv.lock`):
 
 | Dependency | Purpose |
 |---|---|
 | NumPy, pandas, PyArrow | Simulation and Parquet |
-| DuckDB | Local analytics warehouse |
-| dbt Core, dbt-duckdb, dbt-snowflake | Transformations |
-| pytest, Ruff, SQLFluff | Tests and lint |
-| lkml | LookML parse test |
+| DuckDB | Local analytics warehouse and Parquet checks |
+| Faker | Synthetic person and company name lists |
+| free-email-domains | Builds the committed `seeds/free_email_domains.csv` |
+| pydantic, PyYAML | Config loading and validation |
+| pytest, Ruff, pre-commit | Tests, lint, and hooks (dev) |
+
+Planned, added with the PLAN task that first needs them:
+
+| Dependency | Purpose | Task |
+|---|---|---|
+| dbt Core, dbt-duckdb | Transformations | c |
+| SQLFluff | SQL lint | c |
+| lkml | LookML parse test | d |
+| dbt-snowflake, snowflake-connector-python | Snowflake load and build | e |

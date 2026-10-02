@@ -1,20 +1,28 @@
 # Orb billing design
 
-Status: implemented. The generator uses `generator/billing_orb.py`; `generator/tables.py` defines the five in-scope Orb source contracts. Billing consumes recorded lifecycle transitions, seat events, MAU facts, and immutable enterprise contract facts. It does not independently redraw churn, migration, payment failure, recovery, or dunning.
+Status: implemented in `generator/billing_orb.py`. It implements the provisional invoice policy in ADR-011 (Proposed, Finance-owned). `generator/tables.py` defines the ten Orb source contracts listed below. Billing consumes recorded lifecycle transitions, seat events, MAU facts, and immutable enterprise contract facts. It does not independently redraw churn, migration, payment failure, recovery, or dunning.
 
-Governing rules: SPEC sections 2, 3, and 4; SCHEMAS `raw_orb`; ADR-003, ADR-005, ADR-008, and ADR-011. Every price ID and amount comes from `seeds/price_book.csv`. USD is the only supported currency.
+Governing rules: SPEC sections 2, 3, and 4; SCHEMAS `raw_orb`; ADR-003, ADR-005, ADR-008, ADR-011, and ADR-012. Every amount comes from `unit_amount_usd` in `seeds/price_book.csv`. USD is the only currency.
 
-## Inputs and output tables
+## Output tables
 
 | Table | Grain |
 |---|---|
-| customers | One Orb customer per product tailnet. |
+| customers | One Orb customer per product tailnet, created at signup. Free Personal tailnets have a customer but never a subscription or invoice. |
+| plans, prices | The price-book catalog, one plan per plan code and version and one price per price-book row. |
 | subscriptions | One versioned subscription term per paid-plan period. |
+| subscription_quantity_changes | Seat-quantity changes on v4 terms and contract seat counts on enterprise terms. |
 | invoices | Versioned issue/payment states; issue date is distinct from service period. |
-| invoice_line_items | Append-only signed line with inclusive service dates and a price-book ID. |
+| invoice_line_items | Append-only signed line with inclusive service dates and a price ID. |
 | credit_notes | Append-only adjustment linked to an unpaid invoice and involuntary churn. |
+| events | One `user_active` usage event per v3 tailnet user and month. |
+| daily_line_item_revenue | Each line's amount spread over its service days. |
 
-The billing stage uses `sim.transitions` for plan starts, migration, churn, and recorded payment outcomes. `sim.seat_events` reconstructs invoice-time held seats and next-invoice additions. `sim.mau` supplies distinct v3 active users. `sim.contract_events` supplies enterprise ACV, dates, seats, and discount. Activity supplies device measures only where the selected billing policy needs them.
+The marts use customers, subscriptions, invoices, invoice_line_items, and credit_notes. dbt stages the others too (ADR-012).
+
+The billing stage uses `sim.transitions` for plan starts, migration, churn, and recorded payment outcomes. `sim.seat_events` reconstructs invoice-time held seats and next-invoice additions. `sim.mau` supplies distinct v3 active users. `sim.contract_events` supplies enterprise ACV, dates, seats, and discount.
+
+Orb price IDs are `op_<price_id>_usd`, where `<price_id>` is the price-book ID (for example `op_v4_standard_usd` for `v4_standard`).
 
 ## Cadence and calculations
 
@@ -22,7 +30,7 @@ The billing stage uses `sim.transitions` for plan starts, migration, churn, and 
 |---|---|---|
 | Starter/Premium v3 | First of following month | Prior month distinct active users less three free units. A zero usage line still produces an invoice. |
 | Standard/Premium v4 | First of service month | Seats held at invoice time for the full calendar month. Mid-month seat additions appear on the next invoice for inclusive remaining days. |
-| Enterprise | Contract start and each anniversary | One contract year per invoice, in advance, net 30. ACV uses recorded contracted seats, discount, Premium USD list price, and minimum ACV floor. A multiyear term is never billed upfront. |
+| Enterprise | Contract start and each anniversary | One contract year per invoice, in advance, net 30. ACV uses recorded contracted seats, discount, Premium USD list price, and the minimum ACV. A multiyear term is never billed upfront. A mid-term expansion is invoiced on its date, prorated to the next anniversary. |
 
 At a first-of-month migration, the final legacy arrears invoice and first v4 advance invoice share the migration date. Invoice subtotal is the sum of rounded lines; tax is zero and total equals subtotal. Nonprofit discount is a separate negative line linked to a positive base-plan line. Half-up rounding applies per line. Daily revenue allocates any residual cent to the last service day. An unpaid invoice at recorded involuntary churn receives an adjustment credit note dated at churn with reason `uncollectible`.
 
@@ -30,7 +38,7 @@ Invoice issue dates do not determine billings month: the service-period start do
 
 ## Worked examples
 
-All amounts are USD and tax is $0.00. Line price IDs are the committed USD IDs. Dates are inclusive.
+All amounts are USD and tax is $0.00. Price IDs below are price-book IDs; the Orb line carries `op_<price_id>_usd`. Dates are inclusive.
 
 ### 1. V4 Standard adds a seat on 2026-06-16
 
@@ -75,4 +83,18 @@ Nine, ten, eight, and eight active users in March through June. The legacy price
 
 Each invoice has one usage line; subtotal and total equal that line amount.
 
-These histories are deterministic pytest fixtures. Finance policy beyond the specified rules remains documented in ADR-009 and ADR-011.
+These histories are deterministic pytest fixtures in `tests/generator/test_orb_billing.py`. Finance policy beyond the specified rules remains documented in ADR-009 and ADR-011.
+
+## Test coverage
+
+| Rule | Test |
+|---|---|
+| The three worked examples | `test_design_example_*` |
+| Lines sum to subtotal; total = subtotal; tax 0; USD only | `test_all_orb_contracts_references_and_amounts` |
+| Daily revenue sums to each line; residual on the last day | same, and `test_rounding_and_daily_last_day_residual` |
+| Free Personal tailnets have no subscription | `test_lifecycle_cadence_and_no_trial_invoices` |
+| Every active v3 and v4 month has exactly one invoice; migration month has two invoices on one date | `test_every_active_v3_and_v4_month_has_its_required_invoice` |
+| Enterprise invoices one contract year per anniversary | `test_default_enterprise_annual_cadence_and_runtime` |
+| One `uncollectible` credit note per involuntary churn | `test_all_orb_contracts_references_and_amounts` |
+
+Known gaps, scheduled as PLAN task a: no test asserts directly that a trial gets no invoice, and the credit-note test matches counts rather than checking each note's invoice was unpaid at churn.

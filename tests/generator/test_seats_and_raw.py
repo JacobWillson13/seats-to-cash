@@ -1,4 +1,4 @@
-"""PLAN 1.4: seat occupancy, entitlements, and product-source contracts."""
+"""Seat occupancy, entitlements, and product-source contracts."""
 
 from bisect import bisect_left
 from collections import defaultdict

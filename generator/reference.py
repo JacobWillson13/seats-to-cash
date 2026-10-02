@@ -5,7 +5,6 @@ from __future__ import annotations
 import csv
 import datetime as dt
 from dataclasses import dataclass
-from decimal import Decimal
 from pathlib import Path
 
 from generator.pricebook import PriceBook
@@ -22,7 +21,6 @@ FEATURES = (
     "log_streaming",
     "jit_access",
 )
-FX_SOURCES = ("ecb", "ecb_carried_forward", "simulated")
 
 
 class SeedError(ValueError):
@@ -38,7 +36,7 @@ def _rows(path: Path, columns: tuple[str, ...]) -> list[dict[str, str]]:
 
 
 def load_public_email_domains(path: Path) -> frozenset[str]:
-    """Public webmail domains: a signup on one of these is a personal tailnet (SPEC 2.4)."""
+    """Public webmail domains: a signup on one of these is a personal tailnet."""
     domains = [row["domain"] for row in _rows(path, ("domain",))]
     if any(d != d.strip().lower() or not d for d in domains):
         raise SeedError(f"{path}: domains must be lowercase with no surrounding spaces")
@@ -80,38 +78,6 @@ class Entitlements:
             raise LookupError(f"no entitlements for {plan_code} {price_version}") from None
 
 
-class FxRates:
-    """USD per unit of foreign currency, one row per calendar day."""
-
-    def __init__(self, rates: dict[tuple[str, dt.date], Decimal]):
-        self._rates = rates
-        days = sorted({d for _, d in rates})
-        self.date_range = (days[0], days[-1])
-
-    @classmethod
-    def load(cls, path: Path) -> FxRates:
-        rates: dict[tuple[str, dt.date], Decimal] = {}
-        columns = ("rate_date", "currency", "usd_per_unit", "source")
-        for line, row in enumerate(_rows(path, columns), 2):
-            if row["source"] not in FX_SOURCES:
-                raise SeedError(f"{path} line {line}: unknown source {row['source']!r}")
-            rate = Decimal(row["usd_per_unit"])
-            if rate <= 0:
-                raise SeedError(f"{path} line {line}: rate must be positive")
-            rates[(row["currency"], dt.date.fromisoformat(row["rate_date"]))] = rate
-        if not rates:
-            raise SeedError(f"{path}: no rates")
-        return cls(rates)
-
-    def usd_per_unit(self, currency: str, on_date: dt.date) -> Decimal:
-        if currency == "USD":
-            return Decimal(1)
-        try:
-            return self._rates[(currency, on_date)]
-        except KeyError:
-            raise LookupError(f"no {currency} rate for {on_date}") from None
-
-
 class CloseCalendar:
     """Close date per period ('YYYY-MM'). Rows after a period's close date are late (D05)."""
 
@@ -139,7 +105,6 @@ class Seeds:
     price_book: PriceBook
     entitlements: Entitlements
     public_email_domains: frozenset[str]
-    fx: FxRates
     close_calendar: CloseCalendar
 
     @classmethod
@@ -152,7 +117,6 @@ class Seeds:
                 public_email_domains=load_public_email_domains(
                     seeds_dir / "free_email_domains.csv"
                 ),
-                fx=FxRates.load(seeds_dir / "fx_rates.csv"),
                 close_calendar=CloseCalendar.load(seeds_dir / "close_calendar.csv"),
             )
         except FileNotFoundError as exc:

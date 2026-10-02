@@ -28,5 +28,5 @@ def make_ids(
 
 
 def machine_key_hash(seed: int, machine: int) -> str:
-    """Stable per physical machine across tailnets (SPEC 4.4)."""
+    """Stable per physical machine across tailnets."""
     return hashlib.blake2b(f"{seed}:machine:{machine}".encode(), digest_size=32).hexdigest()

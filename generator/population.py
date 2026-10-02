@@ -1,6 +1,6 @@
-"""People, companies, and tailnet signups (SPEC 2.4, 4.4, 4.5).
+"""People, companies, and tailnet signups.
 
-Every entity created here draws from its own entity stream (ADR-023), so its attributes don't
+Every entity created here draws from its own entity stream (ADR-001), so its attributes don't
 depend on how many other entities exist. Population counts in config are totals over the whole
 simulation, from sim_start_date through end_date. Internal tailnets (D03) come on top of
 `population.business_tailnets`, which counts trial signups only.
@@ -20,10 +20,9 @@ from generator.clock import PHASE_LIFECYCLE, SECONDS_PER_DAY, Calendar
 from generator.config import SimulationConfig
 from generator.rng import Stream, entity_rng
 
-CURRENCIES = ("USD", "EUR", "GBP")
 WIREFERN_NAME = "Wirefern"
 WIREFERN_DOMAIN = "wirefern.example"
-KIND_TRIAL, KIND_INTERNAL, KIND_CHILD, KIND_DIRECT = 0, 1, 2, 3
+KIND_TRIAL, KIND_INTERNAL, KIND_DIRECT = 0, 1, 2
 
 # Cosmetic string formats (not behavior): email local parts and company names.
 PERSONAL_LOCAL_FORMATS = ("{f}.{l}", "{f}{l}", "{i}{l}", "{f}.{l}{n}", "{f}{n}", "{f}_{l}")
@@ -86,11 +85,8 @@ class PersonalSignups:
 
     created_day: np.ndarray
     created_sec: np.ndarray
-    currency: np.ndarray
     creator: np.ndarray  # person index
     employed: np.ndarray
-    plus_retire: np.ndarray  # moves to free during the Personal Plus retirement window
-    plus_retire_offset: np.ndarray  # days after v4_effective_date
     # users: creator first, then extras, grouped by tailnet ordinal
     user_tailnet: np.ndarray
     user_join_day: np.ndarray
@@ -101,15 +97,14 @@ class PersonalSignups:
 
 @dataclass
 class BusinessSignups:
-    """Trial and internal tailnets by business ordinal (creation order)."""
+    """Trial, internal, and direct-sales tailnets by business ordinal (creation order)."""
 
     created_day: np.ndarray
     created_sec: np.ndarray
     kind: np.ndarray
     lead_day: np.ndarray
     close_day: np.ndarray
-    lead_source: np.ndarray  # 0 PQL, 1 Inbound, 2 Outbound
-    currency: np.ndarray
+    lead_source: np.ndarray  # 0 product-qualified (PLG seat threshold), 1 Inbound, 2 Outbound
     nonprofit: np.ndarray
     company: np.ndarray
     creator: np.ndarray  # person index
@@ -180,7 +175,6 @@ def build_population(
     emails = _Emails()
     webmail = list(config.people.webmail_domains)
     webmail_w = list(config.people.webmail_domains.values())
-    ccy_w = [config.population.currencies.get(c, 0.0) for c in CURRENCIES]
 
     # Personal tailnets: draw each slot from its own stream, then order by creation time.
     p_month, p_slots = _schedule(config, cal, config.population.personal_tailnets)
@@ -201,11 +195,8 @@ def build_population(
         for k, dt in [
             ("created_day", np.int32),
             ("created_sec", np.int32),
-            ("currency", np.int8),
             ("creator", np.int32),
             ("employed", bool),
-            ("plus_retire", bool),
-            ("plus_retire_offset", np.int16),
         ]
     }
     u_tailnet, u_day, u_sec, u_creator, u_email = [], [], [], [], []
@@ -218,11 +209,8 @@ def build_population(
             local_part(fmt, first, last, 10 + int(u[6] * 90)), webmail[_pick(webmail_w, u[7])]
         )
         p["created_day"][ordinal], p["created_sec"][ordinal] = day, sec
-        p["currency"][ordinal] = _pick(ccy_w, u[2])
         p["creator"][ordinal] = people.add(first, last, personal_email=email)
         p["employed"][ordinal] = u[8] < config.people.employed_share
-        p["plus_retire"][ordinal] = u[9] < config.personal.plus_retirement_downgrade_share
-        p["plus_retire_offset"][ordinal] = int(u[10] * config.personal.plus_retirement_window_days)
         max_users = 3 if day < v4_day else 6
         u_tailnet.append(ordinal), u_day.append(day), u_sec.append(sec)
         u_creator.append(True), u_email.append(email)
@@ -280,7 +268,7 @@ def build_population(
         rows.append(row)
     # Direct rows append after the existing PLG ordinals so their identities remain stable.
 
-    # Bring-to-work: link personal-first creators to an earlier personal tailnet (SPEC 4.4).
+    # Bring-to-work: link personal-first creators to an earlier personal tailnet.
     pool = [i for i in range(n_p) if personal.employed[i]]
     pool_days = [int(personal.created_day[i]) for i in pool]
     company_name, company_domain = [], []
@@ -326,7 +314,6 @@ def build_population(
         ("lead_day", np.int32),
         ("close_day", np.int32),
         ("lead_source", np.int8),
-        ("currency", np.int8),
         ("nonprofit", bool),
         ("company", np.int32),
         ("creator", np.int32),
@@ -382,19 +369,13 @@ def _business_draws(config, cal, rng, kind, slot, *, month):
         f"{last_names[0]}, {last_names[1]} and {last_names[2]}",
     )[company_fmt]
     a = config.activity
-    overage = u[20] < config.addons.tagged_resource_overage_share
-    tagged = (
-        50 + 1 + int(rng.poisson(a.tagged_resources_overage_mean))
-        if overage
-        else min(50, int(rng.poisson(a.tagged_resources_mean)))
-    )
+    tagged = int(rng.poisson(a.tagged_resources_mean))
     shape = config.seats.growth_gamma_shape
     initial_users = max(1, int(round(rng.lognormal(
         config.seats.initial_users_lognormal.mean, config.seats.initial_users_lognormal.sigma
     ))))  # fmt: skip
     size = config.seats.company_size_lognormal
     company_size = max(initial_users, int(round(rng.lognormal(size.mean, size.sigma))))
-    ccy_w = [config.population.currencies.get(c, 0.0) for c in CURRENCIES]
     internal = kind == KIND_INTERNAL
     return {
         "slot": slot,
@@ -404,7 +385,6 @@ def _business_draws(config, cal, rng, kind, slot, *, month):
         "lead_source": 0,
         "created_day": day,
         "created_sec": lo + int(u[1] * (hi - lo)),
-        "currency": 0 if internal else _pick(ccy_w, u[2]),
         "nonprofit": (not internal) and u[3] < config.population.nonprofit_share,
         "personal_first": kind == KIND_TRIAL and u[4] < config.people.personal_first_share,
         "shared_machine": u[5] < config.people.same_machine_share,

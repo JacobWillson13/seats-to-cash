@@ -2,7 +2,7 @@
 
 Business state lives in numpy arrays ordered by business ordinal (creation order). Each day
 advances every tailnet at once with vectorized draws from one generator per (stream, day),
-in a fixed order of phases (ADR-023): activation, departures, admin seat actions, logins,
+in a fixed order of phases: activation, departures, admin seat actions, logins,
 activity, then lifecycle transitions. Same-day events get time-of-day windows in that same
 order, so seat ledgers read consistently.
 """
@@ -27,21 +27,14 @@ from generator.lifecycle import (
     seat_based,
     simulate_personal,
 )
-from generator.population import (
-    CURRENCIES,
-    KIND_CHILD,
-    KIND_DIRECT,
-    KIND_INTERNAL,
-    KIND_TRIAL,
-    Population,
-)
+from generator.population import KIND_DIRECT, KIND_INTERNAL, KIND_TRIAL, Population
 from generator.reference import FEATURES, Seeds
 from generator.rng import Stream, period_rng
 from generator.world import Columns, Log
 
 BUSINESS_FIELDS = {
     "created_day": (np.int32, -1), "created_sec": (np.int32, 0), "kind": (np.int8, 0),
-    "parent": (np.int32, -1), "company": (np.int32, -1), "currency": (np.int8, 0),
+    "company": (np.int32, -1),
     "nonprofit": (bool, False), "personal_first": (bool, False), "origin_personal": (np.int32, -1),
     "shared_machine": (bool, False), "growth_mult": (np.float64, 1.0),
     "approval_required": (bool, False), "advanced_interest": (bool, False),
@@ -58,11 +51,11 @@ BUSINESS_FIELDS = {
     "lead": (bool, False), "lead_day": (np.int32, -1), "lead_source": (np.int8, 0),
     "close_day": (np.int32, -1), "enterprise_source": (np.int8, 0),
     "term_end_day": (np.int32, -1),
-    "term_months": (np.int16, 0), "channel": (np.int8, -1),
+    "term_months": (np.int16, 0),
     "month_mau": (np.int32, 0), "prev_month_mau": (np.int32, 0),
 }  # fmt: skip
 FROM_POPULATION = (
-    "created_day", "created_sec", "kind", "company", "currency", "nonprofit", "personal_first",
+    "created_day", "created_sec", "kind", "company", "nonprofit", "personal_first",
     "origin_personal", "shared_machine", "growth_mult", "approval_required", "advanced_interest",
     "premium_interest", "tagged_resources", "ephemeral", "initial_users", "company_size", "creator",
     "lead_day", "close_day", "lead_source",
@@ -70,7 +63,7 @@ FROM_POPULATION = (
 
 
 class Stats:
-    """Exposure and event counters for the calibration report (SPEC 4.3)."""
+    """Exposure and event counters for the calibration report."""
 
     def __init__(self, n_months: int):
         self.churn_exposure_days = np.zeros((2, 2), np.int64)  # [low][high uplift]
@@ -80,7 +73,6 @@ class Stats:
         self.upgrade_exposure_days = {s: np.zeros(2, np.int64) for s in ("standard", "starter")}
         self.upgrade_event_count = {s: np.zeros(2, np.int64) for s in ("standard", "starter")}
         self.paying_month_end = np.zeros(n_months, np.int64)
-        self.personal_plus_month_end = np.zeros(n_months, np.int64)
         self.utilization_seat: list[np.ndarray] = []
         self.utilization_mau: list[np.ndarray] = []
         self.seat_tailnet_days = 0
@@ -101,9 +93,6 @@ class Stats:
             mask = state == s
             np.add.at(self.upgrade_exposure_days[name], gated[mask].astype(int), 1)
             np.add.at(self.upgrade_event_count[name], gated[mask & move].astype(int), 1)
-
-    def personal_month_end(self, month: int, state):
-        self.personal_plus_month_end[month] = int(np.sum(state == State.PERSONAL_PLUS))
 
 
 class Simulation:
@@ -141,7 +130,6 @@ class Simulation:
         self.stats = Stats(len(cal.months))
         self.entitlements = _entitlement_matrix(seeds)
         self._next_signup = 0
-        self._spawn_requests: list[tuple[int, int]] = []
         self.rng: np.random.Generator | None = None  # the current day's lifecycle stream
 
     # --- helpers used by lifecycle, seats, and activity --------------------------------
@@ -191,8 +179,7 @@ class Simulation:
         idx = np.asarray(idx, np.int64)
         if idx.size == 0:
             return
-        plan = {int(State.PERSONAL_FREE): 0, int(State.PERSONAL_PLUS): 1, int(State.PAST_DUE): 1,
-                int(State.CHURNED): 0, SIGNUP: -1}  # fmt: skip
+        plan = {int(State.PERSONAL_FREE): 0, SIGNUP: -1}
         from_state = np.broadcast_to(np.asarray(from_state, np.int8), idx.shape)
         to_state = np.broadcast_to(np.asarray(to_state, np.int8), idx.shape)
         self.transitions.add(
@@ -245,22 +232,17 @@ class Simulation:
         b.low_days[idx] = 0
 
     def update_uplift(self, idx):
-        """Projected v4 bill vs current v3 bill for legacy tailnets (SPEC 4.3, 8.5)."""
+        """Projected v4 bill vs current v3 bill for legacy tailnets."""
         if idx.size == 0:
             return
         b, book = self.b, self.seeds.price_book
-        ccy = [CURRENCIES[c] for c in b.currency[idx]]
         premium = b.state[idx] == State.PREMIUM
         v3_codes = np.where(premium, State.PREMIUM.name.lower(), State.STARTER.name.lower())
         v4_codes = np.where(premium, State.PREMIUM.name.lower(), State.STANDARD.name.lower())
         old = [book.plan_version_price(code, "v3") for code in v3_codes]
         new = [book.plan_version_price(code, "v4") for code in v4_codes]
-        v3_price = np.array(
-            [float(price.unit_amount(c)) for price, c in zip(old, ccy, strict=True)]
-        )
-        v4_price = np.array(
-            [float(price.unit_amount(c)) for price, c in zip(new, ccy, strict=True)]
-        )
+        v3_price = np.array([float(price.unit_amount()) for price in old])
+        v4_price = np.array([float(price.unit_amount()) for price in new])
         free = np.array([price.free_units or 0 for price in old])
         v3_bill = np.maximum(0, b.prev_month_mau[idx] - free) * v3_price
         v4_bill = (b.occupied[idx] + b.pending[idx]) * v4_price
@@ -276,9 +258,6 @@ class Simulation:
 
     def term_end(self, t: int, months: int) -> int:
         return self.cal.day(add_months(self.cal.dates[t], int(months)))
-
-    def request_spawn(self, parent: int, sec: int) -> None:
-        self._spawn_requests.append((parent, sec))
 
     # --- the loop --------------------------------------------------------------------------
 
@@ -302,7 +281,6 @@ class Simulation:
             )
             self.rng = period_rng(seed, Stream.LIFECYCLE, t)
             lifecycle_step(self, t, self.rng)
-            self._spawn(t)
             if t == self.cal.month_end[self.cal.month_of[t]]:
                 b = self.b
                 paying = np.isin(b.state, [*SELF_SERVE, State.ENTERPRISE, State.PAST_DUE])
@@ -359,19 +337,8 @@ class Simulation:
                         State.ENTERPRISE, version)  # fmt: skip
         if direct.size:
             terms = self.draw_terms(rng, direct.size)
-            e = self.config.enterprise
-            channel = rng.choice(
-                3,
-                size=direct.size,
-                p=[
-                    1 - sum(e.marketplace_share.values()),
-                    e.marketplace_share.get("aws", 0.0),
-                    e.marketplace_share.get("azure", 0.0),
-                ],
-            )
             b.term_months[direct] = terms
             b.term_end_day[direct] = [self.term_end(t, m) for m in terms]
-            b.channel[direct] = channel
         self._initial_users(idx, t, rng)
         self.rng = rng
         self.ensure_seats(internal, t, b.created_sec[internal], "system")
@@ -381,9 +348,6 @@ class Simulation:
             )
             self.set_seats(direct, contracted, t, b.created_sec[direct], "system")
             enterprise.record(self, direct, t, b.created_sec[direct], "close", rng)
-            spawn = direct[rng.random(direct.size) < self.config.enterprise.multi_tailnet_share]
-            for parent in spawn.tolist():
-                self.request_spawn(parent, int(b.created_sec[parent]) + 1)
 
     def _initial_users(self, idx, t, rng):
         b = self.b
@@ -393,33 +357,6 @@ class Simulation:
         n_invites = b.initial_users[idx] - 1
         invited = np.repeat(idx, n_invites)
         seats.add_users(self, invited, t, b.created_sec[invited], rng, earliest_offset=1)
-
-    def _spawn(self, t):
-        """Extra tailnets for multi-tailnet enterprise contracts (SPEC 2.6)."""
-        if not self._spawn_requests:
-            return
-        b, cfg, rng = self.b, self.config, self.rng
-        for parent, sec in self._spawn_requests:
-            child = int(self.b.append(1)[0])
-            for field in ("company", "currency", "nonprofit", "advanced_interest",
-                          "premium_interest", "version", "term_end_day", "term_months",
-                          "channel", "enterprise_source", "lead_source"):  # fmt: skip
-                getattr(b, field)[child] = getattr(b, field)[parent]
-            b.kind[child], b.parent[child] = KIND_CHILD, parent
-            b.created_day[child], b.created_sec[child] = t, sec
-            shape = cfg.seats.growth_gamma_shape
-            b.growth_mult[child] = rng.gamma(shape, 1.0 / shape)
-            b.tagged_resources[child] = rng.poisson(cfg.activity.tagged_resources_mean)
-            b.ephemeral[child] = rng.random() < cfg.activity.ephemeral_share
-            lognormal = cfg.seats.initial_users_lognormal
-            b.initial_users[child] = max(1, round(rng.lognormal(lognormal.mean, lognormal.sigma)))
-            b.company_size[child] = b.company_size[parent]
-            self.transition([child], t, sec, Trigger.SIGNUP_ENTERPRISE_TAILNET, State.ENTERPRISE,
-                            b.version[parent])  # fmt: skip
-            self._initial_users(np.array([child]), t, rng)
-            self.ensure_seats([child], t, sec, "system")
-            enterprise.record(self, [child], t, sec, "child", rng)
-        self._spawn_requests.clear()
 
 
 def _entitlement_matrix(seeds: Seeds) -> np.ndarray:

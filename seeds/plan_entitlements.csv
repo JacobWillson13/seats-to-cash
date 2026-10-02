@@ -9,16 +9,6 @@ personal,v3,posture_integration,false
 personal,v3,flow_logs,false
 personal,v3,log_streaming,false
 personal,v3,jit_access,false
-personal_plus,v3,ssh,true
-personal_plus,v3,funnel,true
-personal_plus,v3,exit_node,true
-personal_plus,v3,subnet_router,true
-personal_plus,v3,scim,false
-personal_plus,v3,mdm_config,false
-personal_plus,v3,posture_integration,false
-personal_plus,v3,flow_logs,false
-personal_plus,v3,log_streaming,false
-personal_plus,v3,jit_access,false
 starter,v3,ssh,true
 starter,v3,funnel,true
 starter,v3,exit_node,true

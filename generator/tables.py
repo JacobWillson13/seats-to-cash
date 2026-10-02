@@ -1,7 +1,7 @@
 """Every raw and truth table: columns, types, keys, and sort order.
 
-This module is the source of truth for table shapes; from PLAN 1.11 the column tables in
-docs/SCHEMAS.md are generated from it. Timestamps are UTC microseconds without a zone.
+This module is the source of truth for table shapes; docs/SCHEMAS.md documents every table
+defined here. Timestamps are UTC microseconds without a zone.
 """
 
 from __future__ import annotations
@@ -177,8 +177,6 @@ SF_TABLES = {
                 _c("contract_term_months__c", INT),
                 _c("contract_start_date__c", DATE),
                 _c("recurring_arr__c", pa.decimal128(18, 2)),
-                _c("purchase_channel__c", STR),
-                _c("marketplace_offer_id__c", STR),
                 _c("is_deleted", BOOL, False),
                 _c("_fivetran_synced", TS, False),
             ),
@@ -198,18 +196,13 @@ TRUTH_TABLES = {
             _c("event_date", DATE, False),
             _c("event_kind", STR, False),
             _c("enterprise_source", STR, False),
-            _c("parent_tailnet_id", STR),
             _c("price_id", STR, False),
-            _c("currency", STR, False),
-            _c("channel", STR, False),
             _c("contract_start_date", DATE, False),
             _c("contract_end_date", DATE, False),
             _c("term_months", INT, False),
             _c("seats", INT, False),
             _c("discount_pct", STR, False),
             _c("recurring_acv", STR, False),
-            _c("services_amount", STR, False),
-            _c("services_delivery_date", DATE),
         ),
         ("tailnet_id", "event_date", "event_kind"),
         ("event_date", "tailnet_id", "event_kind"),

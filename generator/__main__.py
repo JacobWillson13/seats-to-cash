@@ -73,7 +73,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {name:<46} {seconds:6.2f}s")
     print(f"  {'total':<46} {sum(result.timings.values()):6.2f}s")
     print(f"generator: wrote {out_dir / 'raw'} and {result.report_path}")
-    print("generator: payments and finance stages arrive with PLAN 1.6 to 1.8")
     return 0
 
 

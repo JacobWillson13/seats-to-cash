@@ -1,6 +1,6 @@
 """Build seeds/close_calendar.csv: each period closes on the 5th business day of the next month.
 
-Business days are Monday to Friday, with no holidays (SPEC 8.6). Periods run from the month of
+Business days are Monday to Friday, with no holidays. Periods run from the month of
 sim_start_date through the month of end_date. Run once; the CSV is committed.
 Usage: uv run python scripts/build_close_calendar.py [--config ...] [--out ...]
 """

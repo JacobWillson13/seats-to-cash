@@ -1,4 +1,4 @@
-"""Random number streams (ADR-023).
+"""Random number streams (ADR-001).
 
 Two kinds of stream, both derived from the config seed and fixed integers, never from Python's
 salted `hash()`:
@@ -23,7 +23,6 @@ class Stream(IntEnum):
     BRING_TO_WORK = 4
     DIRECT_SALES_SIGNUP = 5
     ENTERPRISE_CONTRACT = 6
-    MULLVAD_ATTACH = 7
     # day and month streams
     BUSINESS_ACTIVATE = 20
     SEATS = 21

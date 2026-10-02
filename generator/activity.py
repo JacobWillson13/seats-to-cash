@@ -1,4 +1,4 @@
-"""Activity, feature usage with gated attempts, and device registrations (SPEC 4.3, 4.4).
+"""Activity, feature usage with gated attempts, and device registrations.
 
 Business tailnets get daily rows while live; personal tailnets get monthly rollups only.
 A gated attempt is using a feature the tailnet's current plan doesn't include
