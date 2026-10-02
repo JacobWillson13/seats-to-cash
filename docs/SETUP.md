@@ -37,7 +37,7 @@ wc -l seeds/free_email_domains.csv
 
 ### 1.4 FX rates
 
-`scripts/fetch_fx.py` (task 1.2) downloads the ECB historical reference rates (https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip), keeps EUR and GBP, converts to USD per unit, and writes `seeds/fx_rates.csv` with a row for every day from `sim_start_date` through `extract_date`. Days past the last ECB publication, or every day with `--offline`, come from a seeded random walk labeled `simulated`. Commit the CSV so the demo never needs the network.
+`scripts/fetch_fx.py` (task 1.2) downloads the ECB historical reference rates (https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip), keeps EUR and GBP, converts to USD per unit, and writes `seeds/fx_rates.csv` with a row for every day from `sim_start_date` through `end_date`. It fails if ECB data is unreachable or doesn't reach `end_date`. `--offline` writes a seeded random walk labeled `simulated` for scratch builds and refuses to overwrite the committed seed. Commit the CSV so the demo never needs the network: `make data` and `make demo` never rebuild seeds.
 
 ### 1.5 Environment file
 

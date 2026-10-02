@@ -378,10 +378,10 @@ def cross_check(config: SimulationConfig, seeds: Seeds) -> None:
         )
 
     fx_start, fx_end = seeds.fx.date_range
-    if fx_start > config.sim_start_date or fx_end < config.extract_date:
+    if fx_start > config.sim_start_date or fx_end < config.end_date:
         problems.append(
             f"fx_rates.csv covers {fx_start} .. {fx_end}, "
-            f"not the full {config.sim_start_date} .. {config.extract_date}"
+            f"not the full {config.sim_start_date} .. {config.end_date}"
         )
 
     if problems:
