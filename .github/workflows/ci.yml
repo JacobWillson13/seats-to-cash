@@ -1,0 +1,50 @@
+# Generator tests and the full dbt build on DuckDB with the 10% CI config.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: make lint
+
+      - name: Generator tests
+        run: make test-gen
+
+      - name: Project tests (truth fence, LookML, Snowflake loader, close)
+        run: uv run pytest tests/project
+
+      - name: Generate and load the CI dataset
+        run: make data CONFIG=config/ci.yml
+
+      - name: dbt build on DuckDB
+        run: make build
+
+      - name: Close history and restatements
+        run: make close-history
+
+      - name: Dashboard queries
+        run: make dashboard
