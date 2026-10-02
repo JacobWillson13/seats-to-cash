@@ -240,6 +240,8 @@ Every table has `is_deleted boolean` and `_fivetran_synced`. Keep volume small; 
 
 These fields are written by Hightouch in the real org, not by the generator: seats_purchased__c, seat_utilization__c, arr__c, pql_score__c, migration_risk__c, signals_updated_at__c.
 
+**lead**: id, account_id, lead_source (`Inbound` or `Outbound`), status, created_date, is_deleted, _fivetran_synced. Direct enterprise prospects enter this table before a product tailnet exists.
+
 **opportunity** (version log; D05 late Salesforce changes append a version that edits amount or close_date after the period's close)
 
 | Column | Type | Notes |
@@ -255,6 +257,7 @@ These fields are written by Hightouch in the real org, not by the generator: sea
 | created_date, last_modified_date | timestamp | |
 | probability | numeric | |
 | owner_id | varchar | |
+| lead_source | varchar | Salesforce standard LeadSource: `Product Qualified Lead`, `Inbound`, or `Outbound` |
 | contract_term_months__c | integer | |
 | contract_start_date__c | date | |
 | recurring_arr__c | numeric | often blank; derive from line items |
@@ -287,7 +290,8 @@ Column types for both tables are defined in `generator/tables.py`.
 
 - **truth_mrr_monthly**: tailnet_id, month, plan_code, price_version, billing_basis, quantity, mrr_runrate_usd, mrr_billed_usd, is_internal
 - **truth_revenue_daily**: tailnet_id, revenue_date, revenue_usd (under default policy vars)
-- **truth_identity**: tailnet_id, orb_customer_id, stripe_customer_id (one row per Stripe customer), salesforce_account_id, parent_account_id
+- **truth_identity**: tailnet_id, orb_customer_id, stripe_customer_id (one row per Stripe customer), salesforce_account_id, parent_account_id, enterprise_source (`plg` or `direct` for enterprise; null otherwise)
+- **truth_enterprise_contracts**: immutable enterprise close, child, renewal, and expansion facts with tailnet_id, event_date/kind, enterprise_source, parent_tailnet_id, price_id, currency, channel, contract_start/end_date, term_months, seats, discount_pct, recurring_acv, services_amount, and services_delivery_date.
 - **truth_bring_to_work**: business_tailnet_id, origin_personal_tailnet_id, person_id, link_observable_by (machine_key, email_localpart, none)
 - **truth_migration**: tailnet_id, legacy_plan_code, projected_uplift_pct, migrated_on, migration_type
 - **defect_manifest**: defect_id, defect_code (D01 to D13), source_table, record_key, injected_at_sim, notes. D03 rows list the internal tailnet ids, though D03 is generated rather than injected.

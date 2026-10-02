@@ -7,14 +7,14 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from generator import app_db, calibration, emit
+from generator import app_db, billing_orb, calibration, emit, salesforce_enterprise
 from generator.activity import Devices, PersonalActivity, device_registrations, personal_monthly
 from generator.clock import Calendar
 from generator.config import SimulationConfig
 from generator.population import build_population
 from generator.reference import Seeds
 from generator.simulate import Simulation
-from generator.tables import APP_TABLES
+from generator.tables import APP_TABLES, ORB_TABLES, SF_TABLES, TRUTH_TABLES
 
 
 @dataclass
@@ -45,6 +45,8 @@ def run(config: SimulationConfig, seeds: Seeds, out_dir: Path, *, defects: bool 
         sim.run_personal()
     with stage("business lifecycle, seats, activity (daily)"):
         sim.run_business()
+    with stage("direct sales lifecycle and activity (daily)"):
+        sim.run_direct_sales()
     with stage("personal activity and devices"):
         personal = personal_monthly(sim)
         devices = device_registrations(sim, personal)
@@ -55,6 +57,20 @@ def run(config: SimulationConfig, seeds: Seeds, out_dir: Path, *, defects: bool 
             name: emit.write(APP_TABLES[name], columns, out_dir / "raw")
             for name, columns in tables.items()
         }
+    with stage("render enterprise Salesforce and truth"):
+        sf_tables, truth_tables = salesforce_enterprise.render(sim)
+    with stage("write enterprise Salesforce and truth Parquet"):
+        for name, columns in sf_tables.items():
+            row_counts[f"salesforce.{name}"] = emit.write(SF_TABLES[name], columns, out_dir / "raw")
+        for name, columns in truth_tables.items():
+            row_counts[f"truth.{name}"] = emit.write(
+                TRUTH_TABLES[name], columns, out_dir / "answer_key"
+            )
+    with stage("render Orb billing"):
+        orb_tables = billing_orb.render(sim, personal)
+    with stage("write raw_orb Parquet"):
+        for name, columns in orb_tables.items():
+            row_counts[f"orb.{name}"] = emit.write(ORB_TABLES[name], columns, out_dir / "raw")
     result = RunResult(sim, personal, devices, row_counts, timings)
     if report:
         result.report_path = out_dir / "reports" / "calibration.md"

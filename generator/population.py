@@ -23,7 +23,7 @@ from generator.rng import Stream, entity_rng
 CURRENCIES = ("USD", "EUR", "GBP")
 WIREFERN_NAME = "Wirefern"
 WIREFERN_DOMAIN = "wirefern.example"
-KIND_TRIAL, KIND_INTERNAL, KIND_CHILD = 0, 1, 2
+KIND_TRIAL, KIND_INTERNAL, KIND_CHILD, KIND_DIRECT = 0, 1, 2, 3
 
 # Cosmetic string formats (not behavior): email local parts and company names.
 PERSONAL_LOCAL_FORMATS = ("{f}.{l}", "{f}{l}", "{i}{l}", "{f}.{l}{n}", "{f}{n}", "{f}_{l}")
@@ -106,6 +106,9 @@ class BusinessSignups:
     created_day: np.ndarray
     created_sec: np.ndarray
     kind: np.ndarray
+    lead_day: np.ndarray
+    close_day: np.ndarray
+    lead_source: np.ndarray  # 0 PQL, 1 Inbound, 2 Outbound
     currency: np.ndarray
     nonprofit: np.ndarray
     company: np.ndarray
@@ -264,6 +267,18 @@ def build_population(
         rng = entity_rng(seed, Stream.INTERNAL_SIGNUP, k)
         rows.append(_business_draws(config, cal, rng, KIND_INTERNAL, k, month=None))
     rows.sort(key=lambda r: (r["created_day"], r["created_sec"], r["kind"], r["slot"]))
+    direct_month, direct_slots = _schedule(config, cal, config.enterprise.direct_sales_accounts)
+    for month, slot in zip(direct_month.tolist(), direct_slots.tolist(), strict=True):
+        rng = entity_rng(seed, Stream.DIRECT_SALES_SIGNUP, slot)
+        row = _business_draws(config, cal, rng, KIND_DIRECT, slot, month=month)
+        row["lead_day"] = row["created_day"]
+        lo, hi = config.enterprise.lead_to_close_lag_days
+        row["close_day"] = row["lead_day"] + int(rng.integers(lo, hi + 1))
+        row["created_day"] = row["close_day"]  # no product tailnet before signing
+        row["lead_source"] = 1 + int(rng.integers(0, 2))
+        row["company_size"] = max(row["company_size"], config.enterprise.lead_seat_threshold)
+        rows.append(row)
+    # Direct rows append after the existing PLG ordinals so their identities remain stable.
 
     # Bring-to-work: link personal-first creators to an earlier personal tailnet (SPEC 4.4).
     pool = [i for i in range(n_p) if personal.employed[i]]
@@ -308,6 +323,9 @@ def build_population(
         ("created_day", np.int32),
         ("created_sec", np.int32),
         ("kind", np.int8),
+        ("lead_day", np.int32),
+        ("close_day", np.int32),
+        ("lead_source", np.int8),
         ("currency", np.int8),
         ("nonprofit", bool),
         ("company", np.int32),
@@ -381,11 +399,14 @@ def _business_draws(config, cal, rng, kind, slot, *, month):
     return {
         "slot": slot,
         "kind": kind,
+        "lead_day": -1,
+        "close_day": -1,
+        "lead_source": 0,
         "created_day": day,
         "created_sec": lo + int(u[1] * (hi - lo)),
         "currency": 0 if internal else _pick(ccy_w, u[2]),
         "nonprofit": (not internal) and u[3] < config.population.nonprofit_share,
-        "personal_first": (not internal) and u[4] < config.people.personal_first_share,
+        "personal_first": kind == KIND_TRIAL and u[4] < config.people.personal_first_share,
         "shared_machine": u[5] < config.people.same_machine_share,
         "localpart_reuse": u[6] < config.people.email_localpart_reuse,
         "company_name": WIREFERN_NAME if internal else company_name,

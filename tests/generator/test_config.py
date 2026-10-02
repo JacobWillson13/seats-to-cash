@@ -24,7 +24,13 @@ def test_ci_config_is_a_ten_percent_overlay():
     assert ci.population.business_tailnets == base.population.business_tailnets // 10
     assert ci.population.internal_tailnets == base.population.internal_tailnets // 10
     assert ci.population.currencies == base.population.currencies  # merged, not replaced
-    assert ci.model_dump(exclude={"population"}) == base.model_dump(exclude={"population"})
+    assert ci.enterprise.direct_sales_accounts == 3
+    ci_common = ci.model_dump(exclude={"population", "enterprise"})
+    base_common = base.model_dump(exclude={"population", "enterprise"})
+    assert ci_common == base_common
+    ci_enterprise = ci.enterprise.model_dump(exclude={"direct_sales_accounts"})
+    base_enterprise = base.enterprise.model_dump(exclude={"direct_sales_accounts"})
+    assert ci_enterprise == base_enterprise
 
 
 @pytest.mark.parametrize(

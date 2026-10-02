@@ -21,6 +21,9 @@ class Stream(IntEnum):
     BUSINESS_SIGNUP = 2
     INTERNAL_SIGNUP = 3
     BRING_TO_WORK = 4
+    DIRECT_SALES_SIGNUP = 5
+    ENTERPRISE_CONTRACT = 6
+    MULLVAD_ATTACH = 7
     # day and month streams
     BUSINESS_ACTIVATE = 20
     SEATS = 21

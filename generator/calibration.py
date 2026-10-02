@@ -68,8 +68,16 @@ def build_report(sim, devices, timings: dict[str, float], row_counts: dict[str, 
             np.isin(trig, [Trigger.PLUS_DOWNGRADE, Trigger.PLUS_RETIREMENT])
         ),
         "v4 migrations": count(trig == Trigger.MIGRATION_VOLUNTARY),
-        "enterprise closes": count(trig == Trigger.ENTERPRISE_CLOSE),
+        "enterprise closes": count(
+            np.isin(trig, [Trigger.ENTERPRISE_CLOSE, Trigger.SIGNUP_DIRECT_ENTERPRISE])
+        ),
     }
+    enterprise_close_count = int(
+        np.sum(np.isin(trig, [Trigger.ENTERPRISE_CLOSE, Trigger.SIGNUP_DIRECT_ENTERPRISE]))
+    )
+    late_pipeline_count = int(
+        np.sum((b.close_day > cal.n_days - 1) & (b.lead_day <= cal.n_days - 1))
+    )
     lines = [
         "# Calibration report",
         "",
@@ -116,6 +124,13 @@ def build_report(sim, devices, timings: dict[str, float], row_counts: dict[str, 
     st_ratio, st_se = _rate_ratio(
         stats.upgrade_event_count["starter"], stats.upgrade_exposure_days["starter"]
     )
+    pooled_upgrade_events = (
+        stats.upgrade_event_count["standard"] + stats.upgrade_event_count["starter"]
+    )
+    pooled_upgrade_exposure = (
+        stats.upgrade_exposure_days["standard"] + stats.upgrade_exposure_days["starter"]
+    )
+    pooled_ratio, pooled_se = _rate_ratio(pooled_upgrade_events, pooled_upgrade_exposure)
     machine_share, machine_n = _shared_machine_share(sim, devices)
 
     def sample(events, exposure):
@@ -152,6 +167,13 @@ def build_report(sim, devices, timings: dict[str, float], row_counts: dict[str, 
             removal_ratio,
             _ci_ratio(removal_ratio, removal_se),
             sample(removal_events, removal_exposure),
+        ),
+        (
+            "Pooled Starter/Standard-to-Premium upgrade, gated attempt vs not",
+            cfg.upgrades.gated_feature_multiplier,
+            pooled_ratio,
+            _ci_ratio(pooled_ratio, pooled_se),
+            sample(pooled_upgrade_events, pooled_upgrade_exposure),
         ),
         (
             "Standard-to-Premium upgrade, gated attempt vs not",
@@ -244,18 +266,19 @@ def build_report(sim, devices, timings: dict[str, float], row_counts: dict[str, 
         "",
         f"- Paying tailnets ever: {business_paid.size:,} business (SPEC 4.5: about 1,000) "
         f"plus {plus_ever.size:,} Personal Plus.",
-        f"- Enterprise contracts closed: {int(np.sum(trig == Trigger.ENTERPRISE_CLOSE))} "
+        f"- Enterprise contracts closed: {enterprise_close_count} "
         f"(SPEC 4.5: about 60), with {int(np.sum(trig == Trigger.SIGNUP_ENTERPRISE_TAILNET))} "
         "extra tailnets for multi-tailnet contracts.",
         f"- Enterprise lead funnel: {int(b.lead.sum())} reached "
         f"{cfg.enterprise.lead_seat_threshold} seats; "
         f"{int(np.sum(b.close_day >= 0))} were selected to close at "
         f"{cfg.enterprise.lead_to_close:g}; "
-        f"{int(np.sum(b.close_day > cal.n_days - 1))} had close dates after "
-        f"{cfg.end_date}; {int(np.sum(trig == Trigger.ENTERPRISE_CLOSE))} closed by the end.",
+        f"{late_pipeline_count} had close dates after "
+        f"{cfg.end_date}; {int(np.sum(trig == Trigger.ENTERPRISE_CLOSE))} PLG and "
+        f"{int(np.sum(trig == Trigger.SIGNUP_DIRECT_ENTERPRISE))} direct closed by the end.",
         f"- Business users created: {sim.users.n:,}.",
         "",
-        "## raw_app row counts",
+        "## Source and truth row counts",
         "",
         "| table | rows |",
         "|---|---:|",

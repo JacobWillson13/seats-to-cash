@@ -171,6 +171,7 @@ class Churn(_Section):
 
 
 class Enterprise(_Section):
+    direct_sales_accounts: NonNegativeInt
     lead_seat_threshold: PositiveInt
     lead_to_close: Probability
     lead_to_close_lag_days: tuple[NonNegativeInt, NonNegativeInt]
@@ -178,6 +179,7 @@ class Enterprise(_Section):
     discount_range: tuple[Probability, Probability]
     min_acv_usd: Annotated[float, Field(gt=0)]
     services_attach_rate: Probability
+    services_delivery_lag_days: tuple[PositiveInt, PositiveInt]
     services_amount_usd: tuple[NonNegative, NonNegative]
     marketplace_share: dict[Marketplace, Probability]
     multi_tailnet_share: Probability
@@ -191,6 +193,7 @@ class Enterprise(_Section):
         _check_range("lead_to_close_lag_days", self.lead_to_close_lag_days)
         _check_range("discount_range", self.discount_range)
         _check_range("services_amount_usd", self.services_amount_usd)
+        _check_range("services_delivery_lag_days", self.services_delivery_lag_days)
         _check_shares("term_months", self.term_months, total=1)
         _check_shares("marketplace_share", self.marketplace_share, total=None)
         if bad := sorted(t for t in self.term_months if t % 12):

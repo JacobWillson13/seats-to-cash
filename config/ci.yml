@@ -6,3 +6,6 @@ population:
   personal_tailnets: 2500
   business_tailnets: 300
   internal_tailnets: 4
+
+enterprise:
+  direct_sales_accounts: 3
