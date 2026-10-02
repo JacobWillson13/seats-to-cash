@@ -241,6 +241,25 @@ def test_truth_mrr_matches_independently_rebuilt_source_facts(ci):
     """,
     )[0][0]
     assert mismatched_contracts == 0
+    # Enterprise ARR is the contract value itself, never 12 x a rounded MRR.
+    assert (
+        q(
+            con,
+            """
+        select count(*) from truth_truth_mrr_monthly
+        where arr_runrate_usd <> case when billing_basis = 'contract'
+                                      then arr_runrate_usd else 12 * mrr_runrate_usd end
+           or (billing_basis = 'contract' and arr_runrate_usd <> (
+                select arg_max(o.recurring_arr__c, o.close_date)
+                from salesforce_opportunity o
+                join (select distinct id, tailnet_id__c from salesforce_account) a
+                  on a.id = o.account_id
+                where a.tailnet_id__c = truth_truth_mrr_monthly.tailnet_id and o.is_won
+                  and not o.is_deleted and o.close_date < month + interval 1 month))
+    """,
+        )[0][0]
+        == 0
+    )
     assert q(con, "select count(*) filter (where is_internal and mrr_runrate_usd <> 0) "
                   "from truth_truth_mrr_monthly")[0][0] == 0  # fmt: skip
 

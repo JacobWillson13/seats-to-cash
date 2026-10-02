@@ -4,6 +4,23 @@ Updated 2026-10-02 after the focus-scope reconcile. The first audit (commit `98e
 
 ## Progress log
 
+### Contract ARR equals ACV (ADR-026)
+
+- **Bug:** a $10,000.00 enterprise contract showed `arr_usd` = $9,999.96, because MRR was rounded to $833.33 and then multiplied by 12.
+- **Fix in `fct_mrr_monthly`:**
+  - Contract ARR is the latest won opportunity's ACV, exactly.
+  - Contract MRR is ACV / 12 at full precision (`numeric(38, 6)`).
+  - Self-serve ARR is 12 × MRR, which is already whole cents.
+  - ARR movements, the waterfall, account signals, and closes read ARR, so they inherit the fix.
+- **Answer key:** gains `arr_runrate_usd`. `audit_mrr_vs_truth` now requires ARR to match exactly, and MRR to match after rounding to cents.
+- **New unit test:** `contract_arr_equals_annual_contract_value` covers a $10,000.00 contract (MRR 833.333333, ARR 10,000.00) and a $12,345.67 one.
+- **Default run (`make demo` 60 s, 129/129 dbt nodes; `make close-history` 97 s):**
+  - Sep 2026 ARR is $1,640,774.80, up $1.00 from the old rounding.
+  - MRR 14,924/14,924 and revenue 15,247/15,247 match truth. The waterfall closes every month.
+  - Restatements are unchanged: 16 figures in 5 of 6 periods.
+  - The README is updated.
+- **Tests:** `make test` passes 115.
+
 ### Snowflake follow-ups
 
 - **Your run on Snowflake:** `make snowflake` loaded all 32 tables, and `dbt build --target snowflake` passed 126/126.

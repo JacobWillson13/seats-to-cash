@@ -206,6 +206,18 @@ The as-of build runs `dbt build --target <target>`, so on Snowflake the `ASOF_*`
 
 `make dashboard-snowflake` compiles the dashboard analyses for Snowflake into `target/snowflake/` without introspection, so it needs no connection and leaves the DuckDB-compiled files alone.
 
+## ADR-026: Round only the final ARR
+
+Status: Accepted
+
+ARR is never rebuilt from a rounded MRR.
+
+- **Self-serve plans:** MRR is already whole cents (invoice and discount amounts), and ARR is 12 × MRR.
+- **Enterprise:** ARR is the latest won opportunity's annual contract value, exactly. MRR is that value / 12, kept unrounded (`numeric(38, 6)`).
+- **Why:** a $10,000.00 contract therefore reports $10,000.00 of ARR, not 12 × $833.33 = $9,999.96.
+- **Downstream:** ARR movements, the waterfall, account signals, and closes all use ARR.
+- **Answer key:** it carries `arr_runrate_usd`. The audit requires ARR to match exactly, and MRR to match once rounded to cents.
+
 ## Dependency log
 
 Installed (`pyproject.toml`, locked in `uv.lock`):

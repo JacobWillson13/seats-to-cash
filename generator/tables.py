@@ -545,6 +545,7 @@ TRUTH_TABLES |= {
             _c("billing_basis", STR, False),
             _c("quantity", INT, False),
             _c("mrr_runrate_usd", USD, False),
+            _c("arr_runrate_usd", USD, False),
             _c("mrr_billed_usd", USD, False),
             _c("is_internal", BOOL, False),
         ),

@@ -1,8 +1,10 @@
 -- Month-end MRR for every paid subscription active on the month's last day (SPEC §4).
--- Internal Wirefern tailnets (D03) are excluded. ARR is 12 x MRR.
+-- Internal Wirefern tailnets (D03) are excluded. MRR keeps full precision; only ARR is rounded
+-- to cents (ADR-026).
 --   v3 (mau):      the month's usage line plus its linked discount line, as Orb billed it.
 --   v4 (seat):     seats held at month end x retained unit price, less the discount.
---   Enterprise:    latest won opportunity's recurring ARR / 12 (ADR-016).
+--   Enterprise:    ARR is the latest won opportunity's recurring ARR, the annual contract
+--                  value, exactly (ADR-016); MRR is that value / 12, unrounded.
 with terms as (
     select * from {{ ref('int_subscription_terms_monthly') }}
     where not is_internal
@@ -65,8 +67,7 @@ priced as (
         end as quantity,
         round(t.unit_amount_usd * coalesce(s.seats_held, 0), 2) as seat_amount_usd,
         u.mrr_usd as usage_mrr_usd,
-        {{ cents_to_usd(div_round_cents('cast(c.recurring_arr_usd * 100 as bigint)', 12)) }}
-            as contract_mrr_usd
+        c.recurring_arr_usd as contract_arr_usd
     from terms as t
     left join usage as u on u.subscription_id = t.subscription_id and u.month = t.month
     left join {{ ref('int_seats_month_end') }} as s on s.tailnet_id = t.tailnet_id and s.month = t.month
@@ -83,18 +84,19 @@ select
     billing_basis,
     discount_pct,
     quantity,
+    -- Self-serve MRR is already exact cents (invoice amounts); contract MRR is ACV / 12.
     cast(
         case billing_basis
             when 'mau' then coalesce(usage_mrr_usd, 0)
             when 'seat' then seat_amount_usd - round(seat_amount_usd * discount_pct, 2)
-            when 'contract' then coalesce(contract_mrr_usd, 0)
-        end as numeric(18, 2)
+            when 'contract' then coalesce(contract_arr_usd, 0) / 12
+        end as numeric(38, 6)
     ) as mrr_usd,
     cast(
-        12 * case billing_basis
-            when 'mau' then coalesce(usage_mrr_usd, 0)
-            when 'seat' then seat_amount_usd - round(seat_amount_usd * discount_pct, 2)
-            when 'contract' then coalesce(contract_mrr_usd, 0)
+        case billing_basis
+            when 'mau' then 12 * coalesce(usage_mrr_usd, 0)
+            when 'seat' then 12 * (seat_amount_usd - round(seat_amount_usd * discount_pct, 2))
+            when 'contract' then coalesce(contract_arr_usd, 0)
         end as numeric(18, 2)
     ) as arr_usd
 from priced

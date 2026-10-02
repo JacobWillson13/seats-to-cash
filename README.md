@@ -8,9 +8,9 @@ A finance data stack for a fictional product-led networking company, Wirefern, b
 
 | | |
 |---|---|
-| ARR, Dec 2025 → Sep 2026 | $980,882.52 → **$1,640,773.80** (+$659,891.28, +67%) |
-| Jan–Sep 2026 movements | new $424,387.68 · expansion $509,197.90 · **repricing $103,315.46** · contraction −$128,256.00 · churn −$282,509.76 · reactivation $33,756.00 |
-| Repricing split | $22,392.00 from 44 tailnets migrating v3 → v4 · $80,923.46 from enterprise renewal uplifts |
+| ARR, Dec 2025 → Sep 2026 | $980,882.97 → **$1,640,774.80** (+$659,891.83, +67%) |
+| Jan–Sep 2026 movements | new $424,388.00 · expansion $509,198.13 · **repricing $103,315.41** · contraction −$128,256.00 · churn −$282,509.71 · reactivation $33,756.00 |
+| Repricing split | $22,392.00 from 44 tailnets migrating v3 → v4 · $80,923.41 from enterprise renewal uplifts |
 | Jan–Sep 2026 billings / revenue / net cash | $1,124,916.21 / $968,768.24 / $1,092,724.93 (fees $14,308.42, refunds $10,718.80, credit notes $7,429.00) |
 | Deferred revenue, 30 Sep 2026 | $478,489.70 |
 | MRR vs. answer key | **14,924 / 14,924** tailnet-months match to the cent |
@@ -19,9 +19,9 @@ A finance data stack for a fictional product-led networking company, Wirefern, b
 | Planted defects handled | D01 14/14 · D03 40/40 · D05 36/36 · D06 68/68 · D09 100/100 · D13 80/80 |
 | Migration exposure (Sep 2026) | 453 legacy active-user tailnets, $437,328 legacy ARR → $664,200 projected on v4 seats (+$226,872); risk tiers: 396 high, 46 medium, 11 low |
 | Month-end closes, Apr–Sep 2026 | 6 closes posted to an append-only ledger; 16 closed figures restated afterwards in 5 of the 6 periods, every one explained by rows loaded after the close. Revenue restated: April −$18.00 (late refund), June −$65.00 (late refund and two credit notes), July −$48.00 (late credit note), August −$9.00 (late refund), September −$108.00 (late refund and credit note) |
-| Salesforce account signals | 152 enterprise accounts; 128 sync-eligible for Hightouch with $1,182,733.80 ARR, 48 of them still on legacy pricing |
+| Salesforce account signals | 152 enterprise accounts; 128 sync-eligible for Hightouch with $1,182,734.80 ARR, 48 of them still on legacy pricing |
 | Reconciliations | ARR waterfall closes every month; deferred-revenue rollforward ties; Orb invoices = deduplicated Stripe invoices; Stripe charges − refunds − fees = balance-transaction net |
-| `make demo` from a fresh clone | 52 s on a cloud container: 32 raw and answer-key tables and 127 dbt nodes (models, seeds, data tests, unit tests), all passing; `make close-history` adds 104 s |
+| `make demo` from a fresh clone | 60 s on a cloud container: 32 raw and answer-key tables and 129 dbt nodes (models, seeds, data tests, unit tests), all passing; `make close-history` adds 97 s |
 
 What the numbers say: most 2026 growth is new logos and seat expansion. Migration repricing is real but small so far ($22k of ARR), because only customers who chose to move to v4 have moved; the larger price effect this year is enterprise renewal uplift. The bigger number is still ahead: moving the remaining legacy tailnets to seats would add about $227k of ARR. 247 of them face more than a 40% increase, and 149 more pay nothing today because they have three or fewer active users.
 

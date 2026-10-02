@@ -480,3 +480,48 @@ unit_tests:
           - {line_id: A1, revenue_date: 2025-01-12, revenue_usd: 32.79}
           - {line_id: A1, revenue_date: 2025-01-13, revenue_usd: 32.79}
           - {line_id: A1, revenue_date: 2025-01-14, revenue_usd: 31.65}
+
+  - name: contract_arr_equals_annual_contract_value
+    description: >
+      A $10,000.00 enterprise contract has ARR of exactly $10,000.00 and full-precision MRR of
+      $833.333333; rounding MRR to $833.33 and multiplying by 12 would give $9,999.96. A
+      $12,345.67 contract keeps its ACV as ARR too (12 x $1,028.81 would be $12,345.72).
+    model: fct_mrr_monthly
+    given:
+      - input: ref('int_subscription_terms_monthly')
+        rows:
+          - {month: 2026-09-01, month_end: 2026-09-30, subscription_id: s1, tailnet_id: t1, plan_code: enterprise, price_version: v4, billing_basis: contract, unit_amount_usd: null, free_units: 0, discount_pct: 0.0000, is_internal: false}
+          - {month: 2026-09-01, month_end: 2026-09-30, subscription_id: s2, tailnet_id: t2, plan_code: enterprise, price_version: v4, billing_basis: contract, unit_amount_usd: null, free_units: 0, discount_pct: 0.0000, is_internal: false}
+      - input: ref('int_invoice_lines')
+        format: sql
+        rows: |
+          select cast(null as varchar) as line_id, cast(null as varchar) as subscription_id,
+                 cast(null as date) as service_month, cast(null as integer) as quantity,
+                 cast(null as numeric(18, 2)) as amount_usd,
+                 cast(null as varchar) as applies_to_line_id, cast(null as varchar) as line_type
+          where 1 = 0
+      - input: ref('int_months')
+        rows:
+          - {month_start: 2026-09-01, month_end: 2026-09-30}
+      - input: ref('stg_salesforce__opportunities')
+        rows:
+          - {opportunity_id: o1, salesforce_account_id: a1, is_won: true, close_date: 2026-01-15, created_date: 2026-01-15 18:00:00, recurring_arr_usd: 10000.00}
+          - {opportunity_id: o2, salesforce_account_id: a2, is_won: true, close_date: 2026-02-10, created_date: 2026-02-10 18:00:00, recurring_arr_usd: 12345.67}
+      - input: ref('stg_salesforce__accounts')
+        rows:
+          - {salesforce_account_id: a1, tailnet_id: t1}
+          - {salesforce_account_id: a2, tailnet_id: t2}
+      - input: ref('stg_orb__subscription_quantity_changes')
+        rows:
+          - {subscription_id: s1, source: sales, effective_date: 2026-01-15, recorded_at: 2026-01-15 18:00:00, quantity: 20}
+          - {subscription_id: s2, source: sales, effective_date: 2026-02-10, recorded_at: 2026-02-10 18:00:00, quantity: 30}
+      - input: ref('int_seats_month_end')
+        format: sql
+        rows: |
+          select cast(null as date) as month, cast(null as varchar) as tailnet_id,
+                 cast(null as integer) as seats_held, cast(null as integer) as seats_occupied
+          where 1 = 0
+    expect:
+      rows:
+        - {month: 2026-09-01, tailnet_id: t1, billing_basis: contract, quantity: 20, mrr_usd: 833.333333, arr_usd: 10000.00}
+        - {month: 2026-09-01, tailnet_id: t2, billing_basis: contract, quantity: 30, mrr_usd: 1028.805833, arr_usd: 12345.67}

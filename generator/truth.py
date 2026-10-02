@@ -3,7 +3,8 @@
 - truth_mrr_monthly: month-end run rate for every business tailnet with a paid subscription
   active on the last day of the month (SPEC §4). v3 uses distinct active users less the free
   units at the retained price; v4 uses seats held at the end of the last day; Enterprise uses the
-  latest contract value / 12. Discount lines round exactly as Orb rounds them.
+  latest contract value / 12. Discount lines round exactly as Orb rounds them. ARR is 12 x MRR
+  for self-serve plans and the annual contract value itself for Enterprise (ADR-026).
 - truth_revenue_monthly: recognized line revenue by service day, less refunds when issued and
   credit notes when effective (ADR-009, ADR-015), for days through end_date.
 - truth_identity: the one Orb, Stripe, and Salesforce record behind each tailnet.
@@ -69,7 +70,8 @@ def render(sim, orb, stripe_rows, sf_tables):
                 if not current:
                     continue
                 quantity = current[-1].seats
-                mrr = money(current[-1].recurring_acv / 12)
+                arr = current[-1].recurring_acv  # the annual contract value, exactly
+                mrr = money(arr / 12)  # reported to cents; ARR is never rebuilt from it
             else:
                 if term.version == 3:
                     quantity = max(0, orb.active_users(tn, m, term) - (price.free_units or 0))
@@ -77,6 +79,7 @@ def render(sim, orb, stripe_rows, sf_tables):
                     quantity = orb.held_at(tn, end_day, second=86_400)
                 amount = money(price.unit_amount("USD") * quantity)
                 mrr = amount - (money(amount * term.discount) if term.discount > 0 else ZERO)
+                arr = 12 * mrr  # exact: self-serve MRR is whole cents
             mrr_rows.append(
                 {
                     "tailnet_id": ids[tn],
@@ -86,6 +89,7 @@ def render(sim, orb, stripe_rows, sf_tables):
                     "billing_basis": price.billing_basis,
                     "quantity": int(quantity),
                     "mrr_runrate_usd": mrr,
+                    "arr_runrate_usd": arr,
                     "mrr_billed_usd": billed[tn, month],
                     "is_internal": tn in internal,
                 }

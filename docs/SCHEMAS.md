@@ -77,7 +77,7 @@ Every PLG tailnet that reaches the enterprise seat threshold, and every direct-s
 | Table | Status | Columns |
 |---|---|---|
 | `truth_enterprise_contracts` | written | tailnet_id, event_date, event_kind (`close`, `renewal`, `expansion`), enterprise_source (`plg`, `direct`), parent_tailnet_id (always null), price_id, currency (`USD`), channel (`stripe`), contract_start_date, contract_end_date, term_months, seats, discount_pct, recurring_acv, services_amount (`0.00`), services_delivery_date |
-| `truth_mrr_monthly` | written | tailnet_id, month (first day), plan_code, price_version, billing_basis (`mau`, `seat`, `contract`), quantity, mrr_runrate_usd, mrr_billed_usd (line amounts with service start in the month), is_internal |
+| `truth_mrr_monthly` | written | tailnet_id, month (first day), plan_code, price_version, billing_basis (`mau`, `seat`, `contract`), quantity, mrr_runrate_usd (rounded to cents), arr_runrate_usd (12 × MRR for `mau` and `seat`; the annual contract value itself for `contract`), mrr_billed_usd (line amounts with service start in the month), is_internal |
 | `truth_revenue_monthly` | written | tailnet_id, month, recognized_usd, refunds_usd, credit_notes_usd, revenue_usd (= recognized − refunds − credit notes), is_internal |
 | `truth_identity` | written | tailnet_id, orb_customer_id, stripe_customer_id (the canonical customer), salesforce_account_id, is_internal |
 | `defect_manifest` | written | defect_id (`D01-00001`), defect_code, source_table (`<source>.<table>`), record_key (the injected or affected row ID), injected_at_sim, notes. D05 rows name a refund or credit note whose load time moved past its period's close. |
