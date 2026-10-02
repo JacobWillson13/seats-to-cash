@@ -218,6 +218,26 @@ ARR is never rebuilt from a rounded MRR.
 - **Downstream:** ARR movements, the waterfall, account signals, and closes all use ARR.
 - **Answer key:** it carries `arr_runrate_usd`. The audit requires ARR to match exactly, and MRR to match once rounded to cents.
 
+## ADR-027: The demo report is a Streamlit in Snowflake app
+
+Status: Accepted
+
+**Why:** Snowsight dashboards were retired; Snowflake disabled new dashboard creation on April 20, 2026, and named Streamlit in Snowflake as the replacement. The report is therefore one Streamlit page, `apps/streamlit_app.py`.
+
+**How it runs:**
+- It gets its session from `get_active_session()`.
+- It uses only the packages Streamlit in Snowflake ships by default: `streamlit`, `pandas`, and `altair`.
+- It reads `SEATS_TO_CASH.MARTS` and `SEATS_TO_CASH.AUDIT` by fully qualified name, with the same logic as `analyses/dashboard/*.sql`.
+- Each query is cached with `st.cache_data`.
+
+**Charts:**
+- They use the reference categorical palette in a fixed order, validated for adjacent marks.
+- Repricing takes the second slot (orange) so it stands apart in the waterfall.
+- Two measures of different scale get two charts, never a dual axis.
+- Every chart has hover tooltips and a table view, because three palette colors sit below 3:1 contrast.
+
+**Local check:** the queries are portable SQL, so a pytest renders the whole page with Streamlit's `AppTest` against the local DuckDB build. The DuckDB catalog is named after the file, so the same qualified names resolve there.
+
 ## Dependency log
 
 Installed (`pyproject.toml`, locked in `uv.lock`):
@@ -233,3 +253,4 @@ Installed (`pyproject.toml`, locked in `uv.lock`):
 | dbt-snowflake (brings snowflake-connector-python and cryptography) | Optional `snowflake` group: `make snowflake` |
 | pytest, Ruff, pre-commit | Tests, lint, and hooks (dev) |
 | lkml | LookML parse test (dev) |
+| Streamlit (brings Altair) | Local render test of `apps/streamlit_app.py` (dev); Snowflake provides its own |

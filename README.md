@@ -25,6 +25,20 @@ A finance data stack for a fictional product-led networking company, Wirefern, b
 
 What the numbers say: most 2026 growth is new logos and seat expansion. Migration repricing is real but small so far ($22k of ARR), because only customers who chose to move to v4 have moved; the larger price effect this year is enterprise renewal uplift. The bigger number is still ahead: moving the remaining legacy tailnets to seats would add about $227k of ARR. 247 of them face more than a 40% increase, and 149 more pay nothing today because they have three or fewer active users.
 
+## The report
+
+![Streamlit in Snowflake app](docs/img/streamlit_app.png)
+<!-- Placeholder: replace docs/img/streamlit_app.png with a screenshot of the app running in Snowflake. -->
+
+The demo report is a one-page [Streamlit in Snowflake](docs/SETUP.md#streamlit-in-snowflake-report) app, [`apps/streamlit_app.py`](apps/streamlit_app.py). It is not a Snowsight dashboard: Snowflake retired those in 2026, disabling new dashboard creation on April 20, 2026, and Streamlit in Snowflake is the official replacement. The page has:
+
+- a KPI row: current ARR, ARR growth since December 2025, repricing share of 2026 growth, the projected ARR change from legacy migration, and defects handled;
+- the ARR trend and the 2026 waterfall, with repricing in its own color;
+- billings vs. revenue vs. cash, and the deferred revenue balance;
+- migration exposure by risk tier;
+- the month-end restatements;
+- the defect scorecard and answer-key match rates.
+
 ## Run it
 
 Requires [uv](https://docs.astral.sh/uv/) and Python 3.12.
@@ -62,6 +76,7 @@ Or step by step:
 - **Month-end close:** each close builds the books as of its calendar close date and appends 14 metrics to an append-only ledger. Re-closing needs `FORCE=1`. `fct_restatements` explains every figure that changed after a close (ADR-023).
 - **Migration exposure and Salesforce signals:** `fct_migration_exposure` projects each legacy tailnet onto v4 seats with a risk tier. `fct_account_signals` (ARR, seats, utilization, migration risk, sync eligibility) is the model for the Hightouch upsert to Salesforce Account.
 - **LookML** in [lookml/](lookml/): views for MRR and ARR movements and an ARR-movements explore, parse-tested with `lkml`.
+- **The report** in [apps/streamlit_app.py](apps/streamlit_app.py): a Streamlit in Snowflake app over the marts and audits, rendered in a local test against DuckDB.
 - **Dashboard SQL** in [analyses/dashboard/](analyses/dashboard/): ARR trend, ARR waterfall by movement type, billings vs. revenue vs. cash, deferred revenue, migration exposure, restatements, and the defect scorecard.
 - **CI:** a GitHub Actions workflow runs lint, every test suite, the dbt build, and the close history on the 10% dataset.
 
@@ -72,7 +87,8 @@ generator (Python, seeded, offline)  ->  Parquet  ->  DuckDB raw_* schemas  (or 
     raw_app · raw_orb · raw_stripe · raw_salesforce · raw_truth (answer key)
         -> dbt: staging -> intermediate -> marts, plus audit models against the answer key
         -> make close: as-of builds -> finance_close.close_ledger -> fct_restatements
-        -> analyses/dashboard/*.sql · lookml/ · fct_account_signals -> Hightouch -> Salesforce
+        -> Streamlit in Snowflake report · analyses/dashboard/*.sql · lookml/
+        -> fct_account_signals -> Hightouch -> Salesforce
 ```
 
 The simulation runs day by day from 2023-01-01 to 2026-09-30, with each day a Los Angeles business date (ADR-014). Billing facts come from recorded lifecycle events, never redrawn. The same seed writes byte-identical Parquet.

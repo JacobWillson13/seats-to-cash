@@ -52,10 +52,37 @@ The committed seeds in `seeds/` are ready to use. Generation does not rebuild se
    - appends them to `FINANCE_CLOSE.CLOSE_LEDGER` in the same database.
 
    It then reruns `dbt build --target snowflake`, so `MARTS.FCT_CLOSE_LEDGER` and `MARTS.FCT_RESTATEMENTS` are populated. It reads `.env` the same way `make snowflake` does. A period already in the ledger is refused; add `FORCE=1` to replace posted closes. `make close PERIOD=2026-09 TARGET=snowflake` posts one period, then `make snowflake` or `dbt build --target snowflake` refreshes the restatements.
-9. **Compile the dashboard queries:** `make dashboard-snowflake` compiles `analyses/dashboard/*.sql` for the Snowflake target without connecting and prints each compiled file's path under `target/snowflake/compiled/`. The files reference `<SNOWFLAKE_DATABASE>.marts` and `.audit`, so paste them into a Snowsight worksheet or a BI tool.
+9. **Compile the dashboard queries (optional):** `make dashboard-snowflake` compiles `analyses/dashboard/*.sql` for the Snowflake target without connecting and prints each compiled file's path under `target/snowflake/compiled/`. The files reference `<SNOWFLAKE_DATABASE>.marts` and `.audit`, so you can paste them into a worksheet or a BI tool. The demo report itself is the Streamlit app below.
 10. **Suspend the warehouse** afterwards: `alter warehouse TRANSFORMING suspend;`.
 
 Raw schemas, the close ledger, and the dbt schemas share one database (ADR-021, ADR-025). The dashboard queries in `analyses/dashboard/` are written in Snowflake syntax against the `MARTS` and `AUDIT` schemas.
+
+## Streamlit in Snowflake report
+
+The demo report is a one-page Streamlit in Snowflake app, `apps/streamlit_app.py` (ADR-027). Snowsight dashboards were retired: Snowflake disabled new dashboard creation on April 20, 2026, and Streamlit in Snowflake is the official replacement.
+
+The app reads `SEATS_TO_CASH.MARTS` and `SEATS_TO_CASH.AUDIT` by fully qualified name, so run `make snowflake` first. Run `make close-history TARGET=snowflake` too, or the restatements section shows a note instead of a table. The app uses only `streamlit`, `pandas`, and `altair`, which Streamlit in Snowflake provides by default; add no packages.
+
+1. **Create the schema** in a Snowsight worksheet, as the role that owns the database:
+   ```sql
+   use role TRANSFORMER;
+   use warehouse TRANSFORMING;
+   create schema if not exists SEATS_TO_CASH.APPS;
+   -- Only needed if another role owns the schema:
+   grant usage on schema SEATS_TO_CASH.APPS to role TRANSFORMER;
+   grant create streamlit on schema SEATS_TO_CASH.APPS to role TRANSFORMER;
+   ```
+2. **Create the app:** in Snowsight, go to **Projects → Streamlit → + Streamlit App** and set:
+   - App title: `Seats to cash`
+   - App location: database `SEATS_TO_CASH`, schema `APPS`
+   - App warehouse: `TRANSFORMING`
+
+   Then select **Create**.
+3. **Paste the code:** replace everything in the editor with the contents of `apps/streamlit_app.py`.
+4. **Run:** select **Run**. The first load runs eight queries; each result is cached for an hour with `st.cache_data`. To refresh after a rebuild, use the app's **⋮ → Clear cache**, then rerun.
+5. **Share (optional):** use **Share** to grant a viewer role. That role needs `USAGE` on the warehouse, database, and `MARTS`/`AUDIT` schemas, and `SELECT` on their tables.
+
+`tests/project/test_streamlit_app.py` runs the same file locally against the DuckDB build through a stand-in Snowpark session, so you can check a change before pasting it.
 
 ## Salesforce enterprise sync
 

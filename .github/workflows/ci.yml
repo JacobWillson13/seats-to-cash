@@ -34,9 +34,6 @@ jobs:
       - name: Generator tests
         run: make test-gen
 
-      - name: Project tests (truth fence, LookML, Snowflake loader, close)
-        run: uv run pytest tests/project
-
       - name: Generate and load the CI dataset
         run: make data CONFIG=config/ci.yml
 
@@ -48,3 +45,6 @@ jobs:
 
       - name: Dashboard queries
         run: make dashboard
+
+      - name: Project tests (truth fence, LookML, Snowflake loader, close, Streamlit app)
+        run: uv run pytest tests/project
