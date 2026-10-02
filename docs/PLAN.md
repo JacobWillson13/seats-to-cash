@@ -20,6 +20,6 @@ Three tiers, in order. Finish each tier completely (tests green, everything push
 
 ## Tier 3: if time remains
 
-- [ ] **9.** The `manual_adjustments` CSV, shaped for a Fivetran-synced Google Sheet.
-- [ ] **10.** A unit test for an annual invoice spanning 2024-02-29.
-- [ ] **11.** The audit's test gaps: a direct test that trials get no invoices, and an uncollectible credit-note check per unpaid invoice.
+- [ ] **9. Skipped by decision:** the `manual_adjustments` CSV, shaped for a Fivetran-synced Google Sheet.
+- [x] **10.** A unit test for an annual invoice spanning 2024-02-29.
+- [x] **11.** The audit's test gaps: a direct test that trials get no invoices, and an uncollectible credit-note check per unpaid invoice.

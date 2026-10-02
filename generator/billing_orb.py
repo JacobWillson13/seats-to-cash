@@ -216,12 +216,15 @@ class Builder:
                     ACTORS[int(events["actor"][j])],
                 )
             )
-        self.mau = defaultdict(set)
+        # (tailnet, month) -> {user: latest logged active day}; a user can be logged twice in
+        # the month a trial converts (before and after the conversion).
+        self.mau = defaultdict(dict)
         first = sim.mau.arrays()
         for user, day in zip(first["user"], first["day"], strict=True):
             tailnet = int(sim.users.tailnet[user])
             month = int(self.cal.month_of[day])
-            self.mau[tailnet, month].add(int(user))
+            seen = self.mau[tailnet, month]
+            seen[int(user)] = max(seen.get(int(user), -1), int(day))
         self.personal_devices = {
             (int(t), int(m)): int(n)
             for t, m, n in zip(personal.tailnet, personal.month, personal.user_devices, strict=True)
@@ -240,6 +243,14 @@ class Builder:
                     entity_rng(sim.config.seed, Stream.MULLVAD_ATTACH, *key).random()
                     < sim.config.addons.mullvad_attach_rate
                 )
+
+    def active_users(self, tailnet, month, term) -> int:
+        """Distinct users active in the month on or after the term's start: trial days before
+        a mid-month conversion are never billed."""
+        return sum(1 for day in self.mau[tailnet, month].values() if day >= term.start)
+
+    def usage_start(self, month, term):
+        return self.cal.dates[max(int(self.cal.month_start[month]), term.start)]
 
     def ts(self, day, second=39_600):
         return int(self.cal.epoch_us(day, second))
@@ -621,14 +632,19 @@ class Builder:
                     term = legacy[-1]
                     issue = end_day + 1
                     price = self.book.price(term.price_id)
-                    count = max(0, len(self.mau[tailnet, month]) - (price.free_units or 0))
+                    count = max(
+                        0, self.active_users(tailnet, month, term) - (price.free_units or 0)
+                    )
                     amount = money(price.unit_amount(term.currency) * count)
-                    base = self.positive_line(term, "usage", price, start, end, count, amount)
+                    service_start = self.usage_start(month, term)
+                    base = self.positive_line(
+                        term, "usage", price, service_start, end, count, amount
+                    )
                     lines = [base]
                     if disc := self.discount_line(term, base):
                         lines.append(disc)
-                    lines += self.addons(term, month, start, end)
-                    self.invoice(term, issue, start, end, lines)
+                    lines += self.addons(term, month, service_start, end)
+                    self.invoice(term, issue, service_start, end, lines)
                 plus = [t for t in active if t.state == State.PERSONAL_PLUS]
                 if plus:
                     term = plus[0]
@@ -886,14 +902,17 @@ class Builder:
 
     def usage_events(self):
         arr = self.sim.mau.arrays()
+        latest = {}
         for user, day in zip(arr["user"], arr["day"], strict=True):
             tn = int(self.sim.users.tailnet[user])
             month = int(self.cal.month_of[day])
+            latest[tn, month, int(user)] = max(latest.get((tn, month, int(user)), -1), int(day))
+        for (tn, month, user), day in latest.items():
             start, end = int(self.cal.month_start[month]), int(self.cal.month_end[month])
             if not any(
                 t.version == 3
                 and t.state in SELF_SERVE
-                and t.start <= end
+                and max(t.start, start) <= day <= end
                 and (t.end is None or t.end >= start)
                 for t in self.by_key[1, tn]
             ):

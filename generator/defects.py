@@ -195,7 +195,10 @@ def _late_rows(sim, stripe, orb_rows, manifest: Manifest):
     extract_end = int(cal.epoch_us(cal.day(cfg.extract_date) + 1, 0))
 
     def late_load(business_day: dt.date, rng) -> int | None:
-        close = sim.seeds.close_calendar.close_date(f"{business_day:%Y-%m}")
+        period = f"{business_day:%Y-%m}"
+        if period not in sim.seeds.close_calendar.close_dates:
+            return None  # dated after the last closed period; nothing to land late against
+        close = sim.seeds.close_calendar.close_date(period)
         at = int(cal.epoch_us(cal.day(close) + int(rng.integers(lo, hi + 1)), 43_200))
         return at if at < extract_end else None
 

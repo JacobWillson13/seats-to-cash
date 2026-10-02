@@ -58,7 +58,7 @@ BUSINESS_FIELDS = {
     "lead": (bool, False), "lead_day": (np.int32, -1), "lead_source": (np.int8, 0),
     "close_day": (np.int32, -1), "enterprise_source": (np.int8, 0),
     "term_end_day": (np.int32, -1),
-    "term_months": (np.int16, 0), "channel": (np.int8, -1),
+    "term_months": (np.int16, 0), "channel": (np.int8, -1), "convert_day": (np.int32, -1),
     "month_mau": (np.int32, 0), "prev_month_mau": (np.int32, 0),
 }  # fmt: skip
 FROM_POPULATION = (

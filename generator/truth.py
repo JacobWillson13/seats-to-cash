@@ -72,7 +72,7 @@ def render(sim, orb, stripe_rows, sf_tables):
                 mrr = money(current[-1].recurring_acv / 12)
             else:
                 if term.version == 3:
-                    quantity = max(0, len(orb.mau[tn, m]) - (price.free_units or 0))
+                    quantity = max(0, orb.active_users(tn, m, term) - (price.free_units or 0))
                 else:
                     quantity = orb.held_at(tn, end_day, second=86_400)
                 amount = money(price.unit_amount("USD") * quantity)

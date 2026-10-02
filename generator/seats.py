@@ -42,6 +42,7 @@ USER_FIELDS = {
     "removed_day": (np.int32, -1), "removed_sec": (np.int32, 0), "expire_day": (np.int32, -1),
     "devices": (np.int8, 1), "propensity": (np.float32, 1.0),
     "last_active_day": (np.int32, -(10**6)), "active_month": (np.int16, -1),
+    "relogged": (bool, False),
     "auto_seat": (bool, False), "unplanned": (bool, False),
 }  # fmt: skip
 

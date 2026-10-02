@@ -4,6 +4,33 @@ Updated 2026-10-02 after the focus-scope reconcile. The first audit (commit `98e
 
 ## Progress log
 
+### Tier 3 (items 10 and 11; item 9 skipped by decision) — final state
+
+- **Item 10, leap day:**
+  - dbt unit test `annual_invoice_spanning_leap_day`: a 366-day year from 2024-01-15 recognizes $32.79 a day, including 2024-02-29, with the $31.65 residual on the last day.
+  - Generator test: a contract signed on 2024-02-29 is invoiced again on 2025-02-28.
+- **Item 11, audit test gaps:**
+  - `test_trials_are_never_invoiced` checks that no subscription or line covers a trial day.
+  - `test_each_uncollectible_credit_note_writes_off_its_unpaid_invoice` checks each note against its invoice: same customer, a failed payment on the issue date, never paid, full total, effective at dunning expiry.
+- **Bug found and fixed (ADR-024):** the trial test showed that in a trial's conversion month, the v3 usage line covered the whole calendar month and billed trial-period users. The line now starts at conversion and counts only users active from then; the answer key, Orb usage events, and dbt all follow.
+- **D05 retuned:** the fix shifted downstream random draws. At 0.10, D05 then restated only 2 closed periods, so it is now 0.20.
+- **Final default run (`make demo` 52 s, 127 dbt nodes; `make close-history` 104 s):**
+  - ARR $980,882.52 (Dec 2025) → $1,640,773.80 (Sep 2026).
+  - 16 closed figures restated in 5 of 6 periods (April, June, July, August, September). July is a late credit note alone; June and September mix credit notes and refunds.
+  - D05 36/36 handled.
+  - MRR 14,924/14,924 and revenue 15,247/15,247 match truth.
+  - The README has every number from this run.
+- **Tests:** `make test` passes 111 (generator 103, project 8).
+- **Tags (local only; pushes return HTTP 403):**
+  - `generator-done` 2b3ce84
+  - `dbt-done` 07a2ff6
+  - `demo-v1` 78c0bad
+  - `demo-done` 80897a9 (Tier 2 complete). The Tier 3 commit after it changes the demo numbers, and the README reflects that later commit.
+- **Still open:**
+  - `make snowflake` has never run against an account.
+  - The GitHub Actions workflow has not run (it triggers on pull requests and pushes to `main`).
+  - Item 9 (manual adjustments) is skipped.
+
 ### demo-done (Tier 2 complete)
 
 - **Built:**
@@ -26,7 +53,7 @@ Updated 2026-10-02 after the focus-scope reconcile. The first audit (commit `98e
   - Migration exposure: 453 legacy tailnets with $437,760 ARR project to $664,200 on v4. Risk tiers: 396 high (248 above 40% uplift, plus 148 with no legacy MRR), 46 medium, 11 low.
   - Account signals: 152 accounts, 128 sync-eligible.
   - Answer-key audits are unchanged: MRR 14,924/14,924 and revenue 15,247/15,247.
-- **Tests:** `make test` passes 108 (generator 98, project 10).
+- **Tests:** `make test` passes 108 (generator 100, project 8).
 - **Open:**
   - The workflow triggers on pull requests and pushes to `main`, so it has not run yet; its steps all pass locally.
   - Tags cannot be pushed (HTTP 403). Create `demo-done` on the commit that adds this entry.

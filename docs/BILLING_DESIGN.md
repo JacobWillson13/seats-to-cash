@@ -28,7 +28,7 @@ Orb price IDs are `op_<price_id>_usd`, where `<price_id>` is the price-book ID (
 
 | Plan | Invoice date | Billed service period |
 |---|---|---|
-| Starter/Premium v3 | First of following month | Prior month distinct active users less three free units. A zero usage line still produces an invoice. |
+| Starter/Premium v3 | First of following month | Prior month distinct active users less three free units. A zero usage line still produces an invoice. In the month a trial converts, the line starts on the subscription start and counts only users active from then (ADR-024). |
 | Standard/Premium v4 | First of service month | Seats held at invoice time for the full calendar month. Mid-month seat additions appear on the next invoice for inclusive remaining days. |
 | Enterprise | Contract start and each anniversary | One contract year per invoice, in advance, net 30. ACV uses recorded contracted seats, discount, Premium USD list price, and the minimum ACV. A multiyear term is never billed upfront. A mid-term expansion is invoiced on its date, prorated to the next anniversary. |
 
@@ -93,8 +93,12 @@ These histories are deterministic pytest fixtures in `tests/generator/test_orb_b
 | Lines sum to subtotal; total = subtotal; tax 0; USD only | `test_all_orb_contracts_references_and_amounts` |
 | Daily revenue sums to each line; residual on the last day | same, and `test_rounding_and_daily_last_day_residual` |
 | Free Personal tailnets have no subscription | `test_lifecycle_cadence_and_no_trial_invoices` |
+| No subscription or invoice line covers a trial day | `test_trials_are_never_invoiced` |
+| Each credit note writes off its own unpaid, failed invoice in full at dunning expiry | `test_each_uncollectible_credit_note_writes_off_its_unpaid_invoice` |
+| An enterprise year signed on 2024-02-29 renews on 2025-02-28; its daily revenue covers leap day | `test_annual_invoice_signed_on_leap_day_renews_on_february_28` |
+| A 366-day service year spanning 2024-02-29 recognizes every day (dbt) | unit test `annual_invoice_spanning_leap_day` |
 | Every active v3 and v4 month has exactly one invoice; migration month has two invoices on one date | `test_every_active_v3_and_v4_month_has_its_required_invoice` |
 | Enterprise invoices one contract year per anniversary | `test_default_enterprise_annual_cadence_and_runtime` |
 | One `uncollectible` credit note per involuntary churn | `test_all_orb_contracts_references_and_amounts` |
 
-Known gaps, scheduled as PLAN task a: no test asserts directly that a trial gets no invoice, and the credit-note test matches counts rather than checking each note's invoice was unpaid at churn.
+The trial test found and fixed one gap: a v3 usage line in a trial's conversion month used to cover the whole calendar month, including trial-period activity (ADR-024).

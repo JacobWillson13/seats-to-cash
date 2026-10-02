@@ -216,6 +216,7 @@ def lifecycle_step(sim, t: int, rng: np.random.Generator) -> None:
         base_tier = State.STANDARD if version_now == 4 else State.STARTER
         target = np.where(premium, State.PREMIUM, base_tier)
         win, lose = ending[converts], ending[~converts]
+        b.convert_day[win] = t
         sim.transition(win, t, sec[win], Trigger.TRIAL_CONVERT, target[converts],
                        version_now)  # fmt: skip
         sim.ensure_seats(win, t, sec[win], "admin")

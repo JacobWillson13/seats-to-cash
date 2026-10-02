@@ -205,7 +205,8 @@ def test_truth_mrr_matches_independently_rebuilt_source_facts(ci):
         """
         with t as (select * from truth_truth_mrr_monthly where billing_basis = 'mau'),
         lines as (
-            select c.external_customer_id tailnet_id, u.start_date as month, u.quantity,
+            select c.external_customer_id tailnet_id,
+                   date_trunc('month', u.start_date) as month, u.quantity,
                    cast(u.amount as decimal(18,2))
                    + coalesce(sum(cast(d.amount as decimal(18,2))), 0) mrr
             from orb_invoice_line_items u
@@ -214,7 +215,8 @@ def test_truth_mrr_matches_independently_rebuilt_source_facts(ci):
               on c.id = i.customer_id
             left join orb_invoice_line_items d on d.applies_to_line_id = u.id
             where u.line_type = 'usage'
-            group by c.external_customer_id, u.start_date, u.quantity, u.amount, u.id)
+            group by c.external_customer_id, date_trunc('month', u.start_date), u.quantity,
+                     u.amount, u.id)
         select count(*) from t left join lines using (tailnet_id, month)
         where lines.quantity is distinct from t.quantity
            or lines.mrr is distinct from t.mrr_runrate_usd

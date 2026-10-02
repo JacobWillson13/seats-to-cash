@@ -136,7 +136,7 @@ Defects are injected into clean rows after the answer key is built, each from it
 - **D06:** an invoice is synced twice under a second ID with the same `orb_invoice_id` and no charge. Staging keeps the first sync per Orb invoice.
 - **D09:** copies of succeeded charges and of opportunities are marked `_fivetran_deleted` or `is_deleted`.
 - **D13:** complete test-mode bundles (customer, paid invoice, charge, balance transaction) with `livemode` false.
-- **D05:** arrives with the close process.
+- **D05:** some refunds and credit notes keep their business dates but are loaded 3 to 20 days after their period's close. The rate is 0.20, so that a default run restates most closed periods with both kinds of late row (ADR-023).
 
 ## ADR-019: DuckDB is loaded by the generator
 
@@ -189,6 +189,12 @@ Status: Accepted
   - it writes to `asof_*` schemas, so the current build is untouched.
 - **The ledger:** the period's 14 metrics (ARR waterfall, billings, revenue and its parts, net cash, deferred revenue) are appended to `finance_close.close_ledger`. A dbt `on-run-start` hook creates the table, and no dbt model owns it, so builds never drop it. A posted period is refused without `FORCE=1`, which replaces it.
 - **Restatements:** `make close-history` posts April–September 2026, then rebuilds. `fct_restatements` lists every closed metric whose current value differs, with the refunds and credit notes dated in the period but loaded after its close (D05). A dbt test requires every restatement to be explained by such rows.
+
+## ADR-024: Trial usage is never billed
+
+Status: Accepted
+
+The simulation logs each user's first active day per month. In the month a trial converts to a v3 plan, it also logs each user's first activity after the conversion. The month's v3 usage line then starts on the subscription start and counts only users with a logged active day on or after it. The answer key, the Orb usage events, and dbt (which reads the line) all use that count. Before this, the conversion month's line covered the whole calendar month and billed trial-period activity. `month_mau`, which drives payment-failure exposure, is unchanged.
 
 ## Dependency log
 
