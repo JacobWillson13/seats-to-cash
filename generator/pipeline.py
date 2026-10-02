@@ -7,14 +7,14 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from generator import app_db, calibration, emit, salesforce_enterprise
+from generator import app_db, billing_orb, calibration, emit, salesforce_enterprise
 from generator.activity import Devices, PersonalActivity, device_registrations, personal_monthly
 from generator.clock import Calendar
 from generator.config import SimulationConfig
 from generator.population import build_population
 from generator.reference import Seeds
 from generator.simulate import Simulation
-from generator.tables import APP_TABLES, SF_TABLES, TRUTH_TABLES
+from generator.tables import APP_TABLES, ORB_TABLES, SF_TABLES, TRUTH_TABLES
 
 
 @dataclass
@@ -66,6 +66,11 @@ def run(config: SimulationConfig, seeds: Seeds, out_dir: Path, *, defects: bool 
             row_counts[f"truth.{name}"] = emit.write(
                 TRUTH_TABLES[name], columns, out_dir / "answer_key"
             )
+    with stage("render Orb billing"):
+        orb_tables = billing_orb.render(sim, personal)
+    with stage("write raw_orb Parquet"):
+        for name, columns in orb_tables.items():
+            row_counts[f"orb.{name}"] = emit.write(ORB_TABLES[name], columns, out_dir / "raw")
     result = RunResult(sim, personal, devices, row_counts, timings)
     if report:
         result.report_path = out_dir / "reports" / "calibration.md"

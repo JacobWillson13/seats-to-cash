@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 from decimal import Decimal
 
 import numpy as np
@@ -37,14 +38,13 @@ def render(sim):
                 "currency": e.currency,
                 "channel": e.channel,
                 "contract_start_date": cal.dates[e.contract_start_day],
-                "contract_end_date": cal.start
-                + __import__("datetime").timedelta(days=e.contract_end_day),
+                "contract_end_date": cal.start + dt.timedelta(days=e.contract_end_day),
                 "term_months": e.term_months,
                 "seats": e.seats,
                 "discount_pct": str(e.discount_pct),
                 "recurring_acv": str(e.recurring_acv),
                 "services_amount": str(e.services_amount),
-                "services_delivery_date": cal.dates[e.services_delivery_day]
+                "services_delivery_date": cal.start + dt.timedelta(days=e.services_delivery_day)
                 if e.services_delivery_day >= 0
                 else None,
             }
@@ -64,9 +64,7 @@ def render(sim):
         opp = f"006{i:012d}"
         created = int(cal.epoch_us(lead_day, 54_000))
         close_day = int(b.close_day[i])
-        close_date = cal.start + __import__("datetime").timedelta(
-            days=close_day if close_day >= 0 else lead_day + 90
-        )
+        close_date = cal.start + dt.timedelta(days=close_day if close_day >= 0 else lead_day + 90)
         contract = contracts.get(i)
         company = int(b.company[i])
         common = {

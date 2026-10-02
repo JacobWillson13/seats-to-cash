@@ -68,21 +68,15 @@ def record(sim, idx, day, sec, kind: str, rng: np.random.Generator) -> None:
             if kind == "close" and rng.random() < e.services_attach_rate:
                 services_usd = Decimal(str(rng.uniform(*e.services_amount_usd)))
                 services = _money(services_usd / rate)
-            delivery = min(
-                day
-                + int(
-                    rng.integers(
-                        e.services_delivery_lag_days[0], e.services_delivery_lag_days[1] + 1
-                    )
-                ),
-                sim.cal.n_days - 1,
+            delivery = day + int(
+                rng.integers(e.services_delivery_lag_days[0], e.services_delivery_lag_days[1] + 1)
             )
             start = day
         elif kind == "renewal":
             discount = prior.discount_pct
             uplift = Decimal(str(rng.exponential(e.renewal_uplift_mean)))
             acv = max(Decimal(int(b.held[tailnet])) * 12 * unit * (1 - discount), floor)
-            acv *= 1 + uplift
+            acv = max(acv, prior.recurring_acv) * (1 + uplift)
             services, delivery, start = Decimal(0), -1, day
         else:  # expansion updates the annual contract value, and preserves its anniversary
             discount = prior.discount_pct

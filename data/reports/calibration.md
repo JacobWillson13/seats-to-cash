@@ -92,7 +92,7 @@ Auto seats: 666 tailnet-days with an auto seat, 1.31% of 50,865 live seat-based 
 - Enterprise lead funnel: 148 reached 25 seats; 68 were selected to close at 0.35; 8 had close dates after 2026-09-30; 28 PLG and 30 direct closed by the end.
 - Business users created: 33,797.
 
-## raw_app row counts
+## Source and truth row counts
 
 | table | rows |
 |---|---:|
@@ -109,18 +109,30 @@ Auto seats: 666 tailnet-days with an auto seat, 1.31% of 50,865 live seat-based 
 | salesforce.lead | 32 |
 | salesforce.opportunity | 206 |
 | truth.truth_enterprise_contracts | 111 |
+| orb.customers | 28,082 |
+| orb.plans | 39 |
+| orb.prices | 42 |
+| orb.subscriptions | 3,151 |
+| orb.subscription_quantity_changes | 1,224 |
+| orb.invoices | 47,643 |
+| orb.invoice_line_items | 26,733 |
+| orb.credit_notes | 180 |
+| orb.events | 135,899 |
+| orb.daily_line_item_revenue | 834,525 |
 
 ## Stage runtimes
 
 | stage | seconds |
 |---|---:|
-| population | 0.70 |
+| population | 0.69 |
 | personal lifecycle (monthly) | 0.03 |
-| business lifecycle, seats, activity (daily) | 1.87 |
-| direct sales lifecycle and activity (daily) | 1.21 |
+| business lifecycle, seats, activity (daily) | 1.86 |
+| direct sales lifecycle and activity (daily) | 1.18 |
 | personal activity and devices | 0.03 |
-| render raw_app | 0.65 |
-| write raw_app Parquet | 0.78 |
+| render raw_app | 0.64 |
+| write raw_app Parquet | 0.77 |
 | render enterprise Salesforce and truth | 0.11 |
-| write enterprise Salesforce and truth Parquet | 0.01 |
-| **total** | 5.37 |
+| write enterprise Salesforce and truth Parquet | 0.00 |
+| render Orb billing | 2.13 |
+| write raw_orb Parquet | 0.49 |
+| **total** | 7.92 |
