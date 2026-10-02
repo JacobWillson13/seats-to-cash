@@ -67,7 +67,9 @@ unit_tests:
       ARR): 3 extra units at the prior $72 per unit are expansion ($216) and the rest is
       repricing ($192). t2 adds seats on an unchanged plan: all expansion. t3 renews an
       enterprise contract with the same seats at a higher value: all repricing. t4 had 0 billable
-      users, so its whole change on migration is repricing. Everyone churns in June.
+      users, so its whole change on migration is repricing. t5 upgrades from v3 Starter to v3
+      Premium with the same users: a tier change on one price version is expansion, not
+      repricing. Everyone churns in June.
     model: fct_arr_movements
     given:
       - input: ref('fct_mrr_monthly')
@@ -80,11 +82,16 @@ unit_tests:
           - {month: 2026-05-01, tailnet_id: t3, plan_code: enterprise, price_version: v4, billing_basis: contract, discount_pct: 0, quantity: 50, arr_usd: 129600.00}
           - {month: 2026-04-01, tailnet_id: t4, plan_code: starter, price_version: v3, billing_basis: mau, discount_pct: 0, quantity: 0, arr_usd: 0.00}
           - {month: 2026-05-01, tailnet_id: t4, plan_code: standard, price_version: v4, billing_basis: seat, discount_pct: 0, quantity: 3, arr_usd: 288.00}
+          - {month: 2026-04-01, tailnet_id: t5, plan_code: starter, price_version: v3, billing_basis: mau, discount_pct: 0, quantity: 4, arr_usd: 288.00}
+          - {month: 2026-05-01, tailnet_id: t5, plan_code: premium, price_version: v3, billing_basis: mau, discount_pct: 0, quantity: 4, arr_usd: 864.00}
     expect:
       rows:
           - {month: 2026-04-01, tailnet_id: t1, movement_type: new, arr_delta_usd: 360.00}
           - {month: 2026-04-01, tailnet_id: t2, movement_type: new, arr_delta_usd: 648.00}
           - {month: 2026-04-01, tailnet_id: t3, movement_type: new, arr_delta_usd: 120000.00}
+          - {month: 2026-04-01, tailnet_id: t5, movement_type: new, arr_delta_usd: 288.00}
+          - {month: 2026-05-01, tailnet_id: t5, movement_type: expansion, arr_delta_usd: 576.00}
+          - {month: 2026-06-01, tailnet_id: t5, movement_type: churn, arr_delta_usd: -864.00}
           - {month: 2026-05-01, tailnet_id: t1, movement_type: expansion, arr_delta_usd: 216.00}
           - {month: 2026-05-01, tailnet_id: t1, movement_type: repricing, arr_delta_usd: 192.00}
           - {month: 2026-05-01, tailnet_id: t2, movement_type: expansion, arr_delta_usd: 432.00}

@@ -2,10 +2,11 @@
 -- with a non-zero amount (ADR-007).
 --   new / reactivation: no subscription last month; reactivation if one existed earlier.
 --   churn:              a subscription last month and none this month.
---   expansion / contraction and repricing: when the plan, price version, or discount changes
---   (or, for a contract, its per-seat value), the quantity change is valued at last month's
---   per-unit ARR and the remainder is repricing, so the split always closes exactly.
---   Otherwise the whole change is expansion or contraction.
+--   expansion / contraction and repricing: when the price version changes (the v3 -> v4
+--   migration), the discount changes, or an enterprise contract's value per seat changes, the
+--   quantity change is valued at last month's per-unit ARR and the remainder is repricing, so
+--   the split always closes exactly. Otherwise, including a tier upgrade or downgrade on the
+--   same price version, the whole change is expansion or contraction.
 with mrr as (
     select
         *,
@@ -24,8 +25,7 @@ pairs as (
         c.quantity as current_quantity,
         p.tailnet_id is not null and c.tailnet_id is not null
         and (
-            p.plan_code <> c.plan_code
-            or p.price_version <> c.price_version
+            p.price_version <> c.price_version
             or p.discount_pct <> c.discount_pct
             or (
                 c.billing_basis = 'contract' and p.quantity > 0 and c.quantity > 0

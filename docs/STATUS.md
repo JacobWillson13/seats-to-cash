@@ -4,6 +4,19 @@ Updated 2026-10-02 after the focus-scope reconcile. The first audit (commit `98e
 
 ## Progress log
 
+### demo-v1 (Tier 1 complete)
+
+- **Built:**
+  - `make snowflake`: key-pair `.env`, `write_pandas` into `RAW_*` schemas, then `dbt build --target snowflake`. The exact steps are in SETUP and the design in ADR-021. It is not run here: the owner runs it locally. The models and analyses compile for the Snowflake target offline.
+  - `analyses/dashboard/*.sql` (ARR trend, ARR waterfall, billings/revenue/cash, deferred revenue, defect scorecard), `make dashboard`, `make demo`, and a README with measured numbers.
+- **Changed:** repricing now applies only to price-version changes, discount changes, and enterprise per-seat changes. A tier upgrade on the same version is expansion (ADR-007; a unit test covers it).
+- **Default `make demo`:** 56 s from an empty database; 107 dbt nodes pass.
+  - ARR $994,742.52 (Dec 2025) → $1,641,205.80 (Sep 2026).
+  - Jan–Sep 2026 repricing $103,315.46: $22,392.00 from v3 → v4 migration and $80,923.46 from enterprise renewals.
+  - MRR 14,924/14,924 and revenue 15,247/15,247 match truth.
+- **Tests:** `make test` 95 passed (generator 91, project 4).
+- **Open:** tags cannot be pushed (HTTP 403). Create `demo-v1` on the commit that adds this entry.
+
 ### dbt-done
 
 - **Built:**

@@ -44,12 +44,12 @@ ARR is month-end MRR multiplied by 12. Invoices are evidence for billed amounts,
 
 Status: Accepted
 
-When a tailnet's plan, price version, or discount changes between month ends, or an enterprise contract's value per seat changes, its ARR change is split in two:
+When a tailnet's price version changes between month ends (the v3 → v4 migration), its discount changes, or an enterprise contract's value per seat changes (a renewal uplift), its ARR change is split in two:
 
 - the quantity change valued at last month's ARR per unit is expansion or contraction;
 - the remainder is repricing.
 
-Repricing is therefore the price change at the new quantity, and the split closes exactly. With no price change, the whole change is expansion or contraction. A tailnet absent last month is new (first ever) or reactivation; one absent this month is churn. A v3 → v4 migration compares billable active users with held seats, so repricing also carries the loss of the three free users. The monthly waterfall must reconcile to the month-end ARR delta; `fct_arr_waterfall` and a dbt test check it every month.
+Repricing is therefore the price change at the new quantity, and the split closes exactly. With no price change, the whole change is expansion or contraction; that includes a tier upgrade or downgrade on the same price version, which is the customer buying more or less. A tailnet absent last month is new (first ever) or reactivation; one absent this month is churn. A v3 → v4 migration compares billable active users with held seats, so repricing also carries the loss of the three free users. The monthly waterfall must reconcile to the month-end ARR delta; `fct_arr_waterfall` and a dbt test check it every month.
 
 ## ADR-008: As-of source handling
 
