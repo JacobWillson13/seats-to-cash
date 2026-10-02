@@ -38,6 +38,24 @@ staged as (
     select opportunity_id, 'salesforce.opportunity' from {{ ref('stg_salesforce__opportunities') }}
 ),
 
+late_rows as (
+    -- D05: refunds and credit notes with their business period and load time.
+    select stripe_refund_id as record_key, {{ period_of('created_date') }} as period,
+           loaded_at
+    from {{ ref('stg_stripe__refunds') }}
+    union all
+    select credit_note_id, {{ period_of('effective_date') }}, _exported_at
+    from {{ ref('stg_orb__credit_notes') }}
+),
+
+closes as (
+    select distinct period, as_of_ts from {{ ref('fct_close_ledger') }}
+),
+
+restated as (
+    select distinct period from {{ ref('fct_restatements') }}
+),
+
 records as (
     select
         m.defect_code,
@@ -47,18 +65,25 @@ records as (
             when 'D01' then coalesce(map.resolution_method = 'email', false)
             -- D03: an internal tailnet flagged in staging.
             when 'D03' then coalesce(t.is_internal, false)
+            -- D05: a row loaded after its period's posted close.
+            when 'D05' then lr.loaded_at > cl.as_of_ts
             -- D06: an Orb invoice with two live Stripe invoices.
             when 'D06' then ds.id is not null
             -- D09 and D13 are detectable from their deleted and livemode flags.
-            else true
+            when 'D09' then true
+            when 'D13' then true
         end as detected,
         case m.defect_code
             -- D01: mapped to the tailnet's canonical customer.
             when 'D01' then coalesce(map.canonical_stripe_customer_id = ti.stripe_customer_id, false)
             -- D03: excluded from every finance mart.
             when 'D03' then coalesce(t.is_internal, false) and mt.tailnet_id is null
+            -- D05: its period was restated, or never closed, so the final build includes it.
+            when 'D05' then lr.record_key is not null and (cl.period is null or rs.period is not null)
             -- D06, D09, D13: dropped by staging.
-            else s.record_key is null
+            when 'D06' then s.record_key is null
+            when 'D09' then s.record_key is null
+            when 'D13' then s.record_key is null
         end as handled
     from manifest as m
     left join {{ ref('int_stripe_customer_map') }} as map
@@ -69,6 +94,9 @@ records as (
         on m.defect_code = 'D03' and t.tailnet_id = m.record_key
     left join mart_tailnets as mt on m.defect_code = 'D03' and mt.tailnet_id = m.record_key
     left join double_synced as ds on m.defect_code = 'D06' and ds.id = m.record_key
+    left join late_rows as lr on m.defect_code = 'D05' and lr.record_key = m.record_key
+    left join closes as cl on m.defect_code = 'D05' and cl.period = lr.period
+    left join restated as rs on m.defect_code = 'D05' and rs.period = lr.period
     left join staged as s
         on m.defect_code in ('D06', 'D09', 'D13')
         and s.record_key = m.record_key and s.source_table = m.source_table

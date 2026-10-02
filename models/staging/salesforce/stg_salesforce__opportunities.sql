@@ -18,5 +18,6 @@ select
     contract_start_date__c as contract_start_date,
     recurring_arr__c as recurring_arr_usd
 from {{ source('salesforce', 'opportunity') }}
+where {{ as_of('_fivetran_synced') }}
 qualify row_number() over (partition by id order by _fivetran_synced desc) = 1
     and not is_deleted

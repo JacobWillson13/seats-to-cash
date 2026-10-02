@@ -43,10 +43,11 @@ Features set the scope boundary, not raw tables (ADR-012). Keep every raw table 
 | `make seeds` | Rebuild the committed email-domain and close-calendar seeds | now |
 | `make build` | dbt build on DuckDB, then the truth-fence check | now |
 | `make test` | Every pytest suite | now |
-| `make close PERIOD=2026-09` | Build and append one as-of close | PLAN tier 2 |
-| `make close-history` | Replay April–September 2026 closes | PLAN tier 2 |
-| `make snowflake` | Snowflake load and dbt build, run locally by the owner | PLAN tier 1 |
-| `make demo` | Fresh-clone DuckDB demo | PLAN tier 1 |
+| `make close PERIOD=2026-09` | Build and append one as-of close (`FORCE=1` replaces) | now |
+| `make close-history` | Replay April–September 2026 closes, then rebuild | now |
+| `make dashboard` | Run `analyses/dashboard/*.sql` on DuckDB | now |
+| `make snowflake` | Snowflake load and dbt build, run locally by the owner | now |
+| `make demo` | Fresh-clone DuckDB demo | now |
 
 ## Workflow
 

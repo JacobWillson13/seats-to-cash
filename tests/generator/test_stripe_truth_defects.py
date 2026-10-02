@@ -7,6 +7,7 @@ import duckdb
 import pyarrow.parquet as pq
 import pytest
 
+from generator.billing_stripe import local_date
 from generator.config import load_config
 from generator.load import load
 from generator.pipeline import run
@@ -119,12 +120,13 @@ def test_manifest_has_only_the_planted_codes_and_each_record_exists(ci):
     _, _, con = ci
     codes = {r[0] for r in q(con, "select distinct defect_code from truth_defect_manifest")}
     assert codes <= SIX
-    assert codes >= {"D01", "D03", "D06", "D09", "D13"}
+    assert codes == SIX
     for table, view in [
         ("stripe.customer", "stripe_customer"), ("stripe.invoice", "stripe_invoice"),
         ("stripe.charge", "stripe_charge"), ("stripe.balance_transaction",
                                              "stripe_balance_transaction"),
         ("salesforce.opportunity", "salesforce_opportunity"), ("app.tailnets", "app_tailnets"),
+        ("stripe.refund", "stripe_refund"), ("orb.credit_notes", "orb_credit_notes"),
     ]:  # fmt: skip
         missing = q(
             con,
@@ -284,3 +286,33 @@ def test_loader_creates_raw_schemas(ci, tmp_path):
         root = "answer_key/truth" if schema == "raw_truth" else f"raw/{schema[4:]}"
         assert rows == pq.read_metadata(out / root / f"{table}.parquet").num_rows
     assert json.loads(json.dumps(counts))  # serializable for the CLI report
+
+
+def test_late_rows_load_after_their_period_close(ci):
+    result, _, con = ci
+    closes = {
+        period: result.sim.seeds.close_calendar.close_date(period)
+        for period in result.sim.seeds.close_calendar.close_dates
+    }
+    rows = q(
+        con,
+        """
+        select m.record_key, r.created, r._fivetran_synced, null, null
+        from truth_defect_manifest m join stripe_refund r on r.id = m.record_key
+        where m.defect_code = 'D05'
+        union all
+        select m.record_key, null, null, c.effective_date, c._exported_at
+        from truth_defect_manifest m join orb_credit_notes c on c.id = m.record_key
+        where m.defect_code = 'D05'
+    """,
+    )
+    assert rows
+    cal = result.sim.cal
+    for _, created, synced, effective, exported in rows:
+        if created is not None:
+            day = local_date(cal, int(created.timestamp() * 1e6))
+            loaded = synced
+        else:
+            day, loaded = effective, exported
+        close = closes[f"{day:%Y-%m}"]
+        assert loaded.timestamp() * 1e6 > cal.epoch_us(cal.day(close) + 1, 0)

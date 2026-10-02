@@ -11,4 +11,4 @@ select
     available_on,
     status
 from {{ source('stripe', 'balance_transaction') }}
-where livemode and not _fivetran_deleted
+where livemode and not _fivetran_deleted and {{ as_of('_fivetran_synced') }}

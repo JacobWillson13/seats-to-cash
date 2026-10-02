@@ -12,6 +12,8 @@ make data CONFIG=config/ci.yml   # small dataset; `make data SEED=42` for the fu
 make build                       # dbt seed, run, and test on DuckDB, then the truth fence
 ```
 
+Closes run after a build: `make close PERIOD=2026-09` posts one period to the ledger (`FORCE=1` replaces a posted one), and `make close-history` posts April–September 2026 and rebuilds so `fct_restatements` shows what changed after each close. `make data` reloads only the raw schemas, so the ledger survives it.
+
 `make data` writes Parquet under `data/` and loads it into `data/seats_to_cash.duckdb`; `make build` builds every dbt model into that file (`DUCKDB_PATH` overrides the path). `make test` runs every pytest suite.
 
 The committed seeds in `seeds/` are ready to use. Generation does not rebuild seeds or need network access; only `make seeds` rebuilds them, and it needs the network.

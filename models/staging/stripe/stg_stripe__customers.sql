@@ -10,4 +10,4 @@ select
     {{ json_string('metadata', 'tailnet_id') }} as metadata_tailnet_id,
     {{ json_string('metadata', 'orb_customer_id') }} as metadata_orb_customer_id
 from {{ source('stripe', 'customer') }}
-where livemode and not _fivetran_deleted and not is_deleted
+where livemode and not _fivetran_deleted and not is_deleted and {{ as_of('created') }}

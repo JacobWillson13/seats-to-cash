@@ -178,6 +178,18 @@ Status: Accepted
   - `low`: otherwise.
 - **Account signals:** `fct_account_signals` has one row per Salesforce account with a tailnet, giving current ARR, seats held and occupied, utilization (occupied ÷ held on seat plans), and the migration tier (`none` off v3). A row is `sync_eligible` when the tailnet pays now and is not internal; Hightouch syncs only those rows.
 
+## ADR-023: As-of closes, the ledger, and restatements
+
+Status: Accepted
+
+- **The as-of build:** `make close PERIOD=YYYY-MM` reads the period's close date from `seeds/close_calendar.csv`. The as-of timestamp is the end of that day in Los Angeles, converted to UTC, so no wall clock is used. dbt builds everything upstream of `fct_close_metrics` with `var('as_of_ts')`. In that build:
+  - version logs keep the latest version loaded by the as-of time;
+  - append-only rows (lines, refunds, credit notes, balance transactions, events, seat events) keep rows loaded by then;
+  - entities without versions (Stripe customers, Orb plans, Salesforce leads) keep rows created by then;
+  - it writes to `asof_*` schemas, so the current build is untouched.
+- **The ledger:** the period's 14 metrics (ARR waterfall, billings, revenue and its parts, net cash, deferred revenue) are appended to `finance_close.close_ledger`. A dbt `on-run-start` hook creates the table, and no dbt model owns it, so builds never drop it. A posted period is refused without `FORCE=1`, which replaces it.
+- **Restatements:** `make close-history` posts April–September 2026, then rebuilds. `fct_restatements` lists every closed metric whose current value differs, with the refunds and credit notes dated in the period but loaded after its close (D05). A dbt test requires every restatement to be explained by such rows.
+
 ## Dependency log
 
 Installed (`pyproject.toml`, locked in `uv.lock`):

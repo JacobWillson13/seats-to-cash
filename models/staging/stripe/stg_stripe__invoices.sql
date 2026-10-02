@@ -3,7 +3,7 @@
 with latest as (
     select *
     from {{ source('stripe', 'invoice') }}
-    where livemode and not _fivetran_deleted
+    where livemode and not _fivetran_deleted and {{ as_of('_fivetran_synced') }}
     qualify row_number() over (partition by id order by _fivetran_synced desc) = 1
 )
 

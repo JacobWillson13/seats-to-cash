@@ -22,6 +22,12 @@ vars:
   migration_high_uplift: 0.40
   migration_medium_uplift: 0.10
 
+# The close ledger is append-only and lives outside dbt-managed schemas, so builds never drop it
+# (ADR-023). scripts/close.py appends to it; fct_close_ledger and fct_restatements read it.
+on-run-start:
+  - "create schema if not exists finance_close"
+  - "create table if not exists finance_close.close_ledger (period varchar, metric varchar, value_usd numeric(18, 2), as_of_ts timestamp, close_date date)"
+
 models:
   seats_to_cash:
     staging:

@@ -10,4 +10,4 @@ select
     {{ local_date('occurred_at') }} as occurred_date,
     _fivetran_synced
 from {{ source('app', 'seat_events') }}
-where not _fivetran_deleted
+where not _fivetran_deleted and {{ as_of('_fivetran_synced') }}

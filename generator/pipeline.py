@@ -71,9 +71,6 @@ def run(config: SimulationConfig, seeds: Seeds, out_dir: Path, *, defects: bool 
     with stage("render Orb billing"):
         orb = billing_orb.Builder(sim, personal)
         orb_tables = orb.build()
-    with stage("write raw_orb Parquet"):
-        for name, columns in orb_tables.items():
-            row_counts[f"orb.{name}"] = emit.write(ORB_TABLES[name], columns, out_dir / "raw")
     with stage("render Stripe"):
         stripe_rows = billing_stripe.StripeBuilder(sim, orb).build()
     with stage("build answer key"):
@@ -82,9 +79,16 @@ def run(config: SimulationConfig, seeds: Seeds, out_dir: Path, *, defects: bool 
         manifest = defects_module.Manifest()
         sf_rows = {name: _rows(cols) for name, cols in sf_tables.items()}
         if defects:
-            defects_module.inject(sim, orb.ids.business_tailnet, stripe_rows, sf_rows, manifest)
+            defects_module.inject(
+                sim, orb.ids.business_tailnet, stripe_rows, sf_rows, manifest, orb.rows
+            )
+            orb_tables["credit_notes"] = _columns(
+                ORB_TABLES["credit_notes"], orb.rows["credit_notes"]
+            )
         truth_tables["defect_manifest"] = _columns(TRUTH_TABLES["defect_manifest"], manifest.rows)
-    with stage("write Stripe, Salesforce, and truth Parquet"):
+    with stage("write Orb, Stripe, Salesforce, and truth Parquet"):
+        for name, columns in orb_tables.items():
+            row_counts[f"orb.{name}"] = emit.write(ORB_TABLES[name], columns, out_dir / "raw")
         for name, rows in stripe_rows.items():
             columns = _columns(STRIPE_TABLES[name], rows)
             row_counts[f"stripe.{name}"] = emit.write(STRIPE_TABLES[name], columns, out_dir / "raw")

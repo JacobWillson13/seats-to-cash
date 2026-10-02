@@ -10,4 +10,4 @@ select
     change_source,
     _fivetran_synced
 from {{ source('app', 'plan_changes') }}
-where not _fivetran_deleted
+where not _fivetran_deleted and {{ as_of('_fivetran_synced') }}

@@ -13,3 +13,4 @@ select
     {{ to_usd('amount') }} as amount_usd,
     _exported_at
 from {{ source('orb', 'invoice_line_items') }}
+where {{ as_of('_exported_at') }}

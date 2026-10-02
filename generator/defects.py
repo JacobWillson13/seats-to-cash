@@ -1,15 +1,18 @@
 """Defect injection into clean source rows, after the answer key is built (ADR-010).
 
 Every injected record gets a `defect_manifest` row. D03 (internal tailnets) is generated with
-the population, so it is only recorded here. D05 (late refunds and credit notes) arrives with
-the close process. Each defect draws from its own seeded stream over stably ordered rows.
+the population, so it is only recorded here. D05 moves the load time of some refunds and credit
+notes past their period's close. Each defect draws from its own seeded stream over stably
+ordered rows.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from collections import defaultdict
 
+from generator.billing_stripe import local_date
 from generator.ids import make_id
 from generator.population import KIND_INTERNAL
 from generator.rng import Stream, table_rng
@@ -47,10 +50,12 @@ def _latest(rows):
     return [latest[k] for k in sorted(latest)]
 
 
-def inject(sim, ids, stripe, sf_rows, manifest: Manifest):
-    """Mutate `stripe` and `sf_rows` (table -> list of row dicts) in place."""
+def inject(sim, ids, stripe, sf_rows, manifest: Manifest, orb_rows=None):
+    """Mutate `stripe`, `sf_rows`, and `orb_rows` (table -> list of row dicts) in place."""
     seed, rates = sim.config.seed, sim.config.defects
     b, cal = sim.b, sim.cal
+    if orb_rows is not None:
+        _late_rows(sim, stripe, orb_rows, manifest)
 
     # D03: internal Wirefern tailnets, billed at a 100% discount.
     for tn in range(b.n):
@@ -178,6 +183,53 @@ def inject(sim, ids, stripe, sf_rows, manifest: Manifest):
             ("stripe.balance_transaction", bid),
         ):
             manifest.add("D13", table, key, at, "test-mode row")  # fmt: skip
+
+
+def _late_rows(sim, stripe, orb_rows, manifest: Manifest):
+    """D05: refunds and credit notes that land after their period's close. The business facts
+    and their dates stay the same; only the load timestamp moves to `sync.late_row_lag_days`
+    after the close date, so a later as-of build restates the closed period."""
+    cfg, cal = sim.config, sim.cal
+    rate = cfg.defects.D05_late_rows
+    lo, hi = cfg.sync.late_row_lag_days
+    extract_end = int(cal.epoch_us(cal.day(cfg.extract_date) + 1, 0))
+
+    def late_load(business_day: dt.date, rng) -> int | None:
+        close = sim.seeds.close_calendar.close_date(f"{business_day:%Y-%m}")
+        at = int(cal.epoch_us(cal.day(close) + int(rng.integers(lo, hi + 1)), 43_200))
+        return at if at < extract_end else None
+
+    rng = table_rng(sim.config.seed, Stream.DEFECTS, "D05-refund")
+    refunds = sorted(stripe["refund"], key=lambda r: r["id"])
+    for refund, u in zip(refunds, rng.random(len(refunds)), strict=True):
+        if u >= rate:
+            continue
+        at = late_load(local_date(cal, refund["created"]), rng)
+        if at is None or at <= refund["_fivetran_synced"]:
+            continue
+        refund["_fivetran_synced"] = at
+        for row in stripe["balance_transaction"]:
+            if row["id"] == refund["balance_transaction_id"]:
+                row["_fivetran_synced"] = at
+        for row in stripe["charge"]:
+            if row["id"] == refund["charge_id"] and row["amount_refunded"] > 0:
+                row["_fivetran_synced"] = at
+        created = local_date(cal, refund["created"])
+        manifest.add(
+            "D05", "stripe.refund", refund["id"], at, f"refund created {created} loaded late"
+        )
+
+    rng = table_rng(sim.config.seed, Stream.DEFECTS, "D05-credit-note")
+    notes = sorted(orb_rows["credit_notes"], key=lambda r: r["id"])
+    for note, u in zip(notes, rng.random(len(notes)), strict=True):
+        if u >= rate:
+            continue
+        at = late_load(note["effective_date"], rng)
+        if at is None or at <= note["_exported_at"]:
+            continue
+        note["_exported_at"] = at
+        manifest.add("D05", "orb.credit_notes", note["id"], at,
+                     f"credit note effective {note['effective_date']} exported late")  # fmt: skip
 
 
 def _sf_latest(rows):

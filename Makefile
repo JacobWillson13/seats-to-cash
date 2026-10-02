@@ -1,11 +1,12 @@
 # seats-to-cash. Targets are added as PLAN tasks land; see CLAUDE.md for the full list.
 
 SEED ?= 42
+CLOSE_PERIODS := 2026-04 2026-05 2026-06 2026-07 2026-08 2026-09
 CONFIG ?= config/simulation.yml
 DBT := uv run dbt
 DBT_ARGS := --profiles-dir .
 
-.PHONY: setup seeds data test-gen test lint build fence snowflake dashboard demo
+.PHONY: setup seeds data test-gen test lint build fence snowflake dashboard demo close close-history
 
 setup:  ## uv sync, dbt deps (once dbt_project.yml exists), pre-commit install
 	uv sync
@@ -50,3 +51,13 @@ demo:  ## fresh-clone DuckDB demo: generate, load, build and test, then print th
 	$(MAKE) data SEED=$(SEED)
 	$(MAKE) build
 	$(MAKE) dashboard
+
+close:  ## post one as-of close to the ledger: make close PERIOD=2026-09 [FORCE=1]
+	@test -n "$(PERIOD)" || (echo "close: set PERIOD=YYYY-MM" && exit 2)
+	uv run python scripts/close.py --period $(PERIOD) $(if $(FORCE),--force)
+
+close-history:  ## replay the April-September 2026 closes, then rebuild so restatements show
+	for period in $(CLOSE_PERIODS); do \
+		uv run python scripts/close.py --period $$period $(if $(FORCE),--force) || exit $$?; \
+	done
+	$(MAKE) build

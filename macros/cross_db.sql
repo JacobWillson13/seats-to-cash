@@ -60,3 +60,23 @@
 {% macro div_round_cents(cents, divisor) -%}
     (sign({{ cents }}) * floor((abs({{ cents }}) * 2 + {{ divisor }}) / (2.0 * {{ divisor }})))
 {%- endmacro %}
+
+{# As-of gate for a close (ADR-023): with var('as_of_ts') set, keep rows whose timestamp is at
+   or before it; otherwise keep everything. Version logs and append-only rows pass their load
+   timestamp; entities without versions pass their creation timestamp. #}
+{% macro as_of(column) -%}
+    {%- if var('as_of_ts', none) -%}
+        {{ column }} <= cast('{{ var("as_of_ts") }}' as timestamp)
+    {%- else -%}
+        1 = 1
+    {%- endif -%}
+{%- endmacro %}
+
+{# 'YYYY-MM' for a date, as in seeds/close_calendar.csv. #}
+{% macro period_of(column) -%}
+    {%- if target.type == 'snowflake' -%}
+        to_char({{ column }}, 'YYYY-MM')
+    {%- else -%}
+        strftime({{ column }}, '%Y-%m')
+    {%- endif -%}
+{%- endmacro %}

@@ -15,6 +15,6 @@ select
     payment_method_type,
     balance_transaction_id
 from {{ source('stripe', 'charge') }}
-where livemode
+where livemode and {{ as_of('_fivetran_synced') }}
 qualify row_number() over (partition by id order by _fivetran_synced desc) = 1
     and not _fivetran_deleted

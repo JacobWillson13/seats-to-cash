@@ -15,7 +15,7 @@ Three tiers, in order. Finish each tier completely (tests green, everything push
 
 - [x] **5. Migration exposure and account signals**: `fct_migration_exposure`; `fct_account_signals` (salesforce_account_id, tailnet_id, arr_usd, seats_held, seat_utilization, migration_risk_tier, sync_eligible); a migration-exposure dashboard query.
 - [x] **6. LookML**: `lookml/` views for `fct_mrr_monthly` and `fct_arr_movements` plus one explore, parsed with `lkml` in a test.
-- [ ] **7. Close process**: D05 late refunds and credit notes; `as_of_ts` filters in staging; `make close PERIOD=YYYY-MM` and `make close-history` (2026-04 through 2026-09); `fct_close_ledger` and `fct_restatements`; a restatements dashboard query.
+- [x] **7. Close process**: D05 late refunds and credit notes; `as_of_ts` filters in staging; `make close PERIOD=YYYY-MM` and `make close-history` (2026-04 through 2026-09); `fct_close_ledger` and `fct_restatements`; a restatements dashboard query.
 - [ ] **8. CI**: a GitHub Actions workflow running `make test-gen` and `dbt build` on DuckDB with `config/ci.yml`. Update the README and tag `demo-done`.
 
 ## Tier 3: if time remains

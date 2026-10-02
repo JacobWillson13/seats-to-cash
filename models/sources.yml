@@ -57,3 +57,8 @@ sources:
   - name: truth_revenue_monthly
   - name: truth_identity
   - name: defect_manifest
+- name: finance_close
+  schema: finance_close
+  description: Append-only close ledger written by scripts/close.py (make close).
+  tables:
+  - name: close_ledger

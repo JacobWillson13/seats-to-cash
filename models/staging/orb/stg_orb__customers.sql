@@ -11,4 +11,5 @@ select
     created_at,
     _exported_at
 from {{ source('orb', 'customers') }}
+where {{ as_of('_exported_at') }}
 qualify row_number() over (partition by id order by _exported_at desc) = 1

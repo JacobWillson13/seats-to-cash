@@ -16,4 +16,5 @@ select
     s._exported_at
 from {{ source('orb', 'subscriptions') }} as s
 left join {{ ref('stg_orb__plans') }} as p on p.orb_plan_id = s.plan_id
+where {{ as_of('s._exported_at') }}
 qualify row_number() over (partition by s.id order by s._exported_at desc) = 1
