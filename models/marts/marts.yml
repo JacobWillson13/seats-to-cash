@@ -50,3 +50,25 @@ models:
         data_tests: [unique, not_null]
       - name: orb_customer_id
         data_tests: [unique, not_null]
+  - name: fct_migration_exposure
+    description: Legacy v3 tailnets at the latest month end with projected v4 MRR and a risk tier.
+    columns:
+      - name: tailnet_id
+        data_tests: [unique, not_null]
+      - name: migration_risk_tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [high, medium, low]
+  - name: fct_account_signals
+    description: Salesforce account signals for the Hightouch upsert on Tailnet_ID__c.
+    columns:
+      - name: salesforce_account_id
+        data_tests: [unique, not_null]
+      - name: tailnet_id
+        data_tests: [unique, not_null]
+      - name: migration_risk_tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [high, medium, low, none]

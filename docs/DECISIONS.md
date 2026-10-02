@@ -167,6 +167,17 @@ Status: Accepted
 
 `make snowflake` is run by the owner, never by an agent session. `scripts/snowflake_load.py` reads `.env`, connects with key-pair authentication, and loads every Parquet file with `write_pandas` into the dbt target database as `RAW_<SOURCE>.<TABLE>`, with upper-case table and column names and logical types, replacing what is there. Then `dbt build --target snowflake` runs the same models and tests as DuckDB. Upper-case names let unquoted SQL resolve on both warehouses. The two keyword identifiers (Salesforce `ACCOUNT`, Orb `timestamp`) are quoted through the source config and the `quoted()` macro. Raw and modeled schemas share one database to keep grants simple. The Snowflake client is an optional dependency group, and the lock covers Linux and macOS only, because the client does not resolve for Windows.
 
+## ADR-022: Migration exposure and account signals
+
+Status: Accepted
+
+- **Exposure:** `fct_migration_exposure` covers every legacy (v3) subscription at the latest month end. Its projected v4 MRR moves the tailnet to the matching seat plan (Starter → Standard, Premium → Premium) at the v4 list price, with one seat per user who has logged in and is not removed, less its discount. This matches the simulation's own uplift rule.
+- **Risk tiers:**
+  - `high`: uplift above `migration_high_uplift` (0.40, the same threshold as the config), or no legacy MRR to compare.
+  - `medium`: uplift above `migration_medium_uplift` (0.10).
+  - `low`: otherwise.
+- **Account signals:** `fct_account_signals` has one row per Salesforce account with a tailnet, giving current ARR, seats held and occupied, utilization (occupied ÷ held on seat plans), and the migration tier (`none` off v3). A row is `sync_eligible` when the tailnet pays now and is not internal; Hightouch syncs only those rows.
+
 ## Dependency log
 
 Installed (`pyproject.toml`, locked in `uv.lock`):
@@ -181,10 +192,4 @@ Installed (`pyproject.toml`, locked in `uv.lock`):
 | dbt Core, dbt-duckdb | Transformations on DuckDB |
 | dbt-snowflake (brings snowflake-connector-python and cryptography) | Optional `snowflake` group: `make snowflake` |
 | pytest, Ruff, pre-commit | Tests, lint, and hooks (dev) |
-
-Planned, added with the PLAN task that first needs them:
-
-| Dependency | Purpose | Task |
-|---|---|---|
-| lkml | LookML parse test | tier 2, item 6 |
-
+| lkml | LookML parse test (dev) |

@@ -17,6 +17,10 @@ vars:
   sim_start_date: "2023-01-01"
   end_date: "2026-09-30"
   internal_domain: wirefern.example
+  # Migration risk tiers on projected v4 MRR vs. current legacy MRR (ADR-022). The high
+  # threshold matches config/simulation.yml migration.high_uplift_threshold.
+  migration_high_uplift: 0.40
+  migration_medium_uplift: 0.10
 
 models:
   seats_to_cash:
