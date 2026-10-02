@@ -21,8 +21,9 @@ Kickoff prompt for Claude Code:
 
 > Read CLAUDE.md, docs/SPEC.md sections 2 to 5, and docs/SCHEMAS.md. Then do PLAN tasks 1.1 to 1.3 only. Before writing billing code, show me the module layout and the state machine transition table with the config keys each transition uses.
 
-- [ ] 1.1 [M] Scaffold: uv project, `generator/` package, Makefile targets `setup`, `data`, and `test-gen`, pre-commit with ruff, `.gitignore`, `.env.example`.
+- [x] 1.1 [M] Scaffold: uv project, `generator/` package, Makefile targets `setup`, `data`, and `test-gen`, pre-commit with ruff, `.gitignore`, `.env.example`.
   - Accept: `make setup` works on a fresh clone and `python -m generator --help` prints usage.
+  - Note: pre-commit hooks are local and call `uv run ruff`, so the lockfile pins one ruff version for hooks and `make lint`. Ruff's banned-api rule (TID251) blocks the wall clock, stdlib `random`, `uuid4`, and `np.random.seed`, enforcing the determinism rule at lint time.
 - [ ] 1.2 [M] Config and seeds: a pydantic model for `config/simulation.yml` that cross-checks duplicated values (price book dates, forced migration date); `config/ci.yml` at 10% scale; a price book loader with `list_price(plan_code, date)` for new sales and `price(price_id)` for existing subscriptions; loaders for `seeds/plan_entitlements.csv`; `seeds/free_email_domains.csv` (SETUP 1.3); `scripts/fetch_fx.py` writing `seeds/fx_rates.csv` from 2023-01-01, with a seeded random-walk fallback; `scripts/build_close_calendar.py` writing `seeds/close_calendar.csv`.
   - Accept: an invalid config fails with a clear message; a price lookup by (plan_code, date) returns v3 on 2026-04-07 and v4 on 2026-04-08; the close calendar has every period from 2023-01 through 2026-09 on the 5th weekday of the following month.
 - [ ] 1.3 [M] Population and lifecycle: people, companies, domains, and tailnets; the state machine in SPEC 4.2; the planted mechanisms in SPEC 4.3.

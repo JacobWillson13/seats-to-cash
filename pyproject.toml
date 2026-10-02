@@ -1,0 +1,54 @@
+[project]
+name = "seats-to-cash"
+version = "0.1.0"
+description = "Synthetic finance data stack for a fictional product-led SaaS company."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "duckdb>=1.5.6",
+    "faker>=40.40.0",
+    "free-email-domains>=1.0.2",
+    "numpy>=2.5.3",
+    "pandas>=3.0.6",
+    "pyarrow>=25.0.1",
+    "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.2",
+    "pytest>=9.1.1",
+    "ruff>=0.16.10",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "generator"
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "TID251"]
+
+# Determinism (CLAUDE.md): no wall clock, no unseeded randomness, no random IDs.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"random".msg = "Use a numpy Generator from generator.rng; the stdlib random module is unseeded global state."
+"datetime.datetime.now".msg = "Use the simulation clock, never the wall clock."
+"datetime.datetime.utcnow".msg = "Use the simulation clock, never the wall clock."
+"datetime.datetime.today".msg = "Use the simulation clock, never the wall clock."
+"datetime.date.today".msg = "Use the simulation clock, never the wall clock."
+"time.time".msg = "Use the simulation clock, never the wall clock."
+"uuid.uuid1".msg = "Use generator.ids for deterministic IDs."
+"uuid.uuid4".msg = "Use generator.ids for deterministic IDs."
+"numpy.random.seed".msg = "Pass numpy.random.default_rng(seed) explicitly."

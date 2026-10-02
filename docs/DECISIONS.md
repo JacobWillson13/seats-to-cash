@@ -173,6 +173,7 @@ Consequences: No generated company domain can resolve to a real business. Compan
 
 | Dependency | Why |
 |---|---|
+| uv_build | build backend for the `generator` package |
 | numpy, pandas, pyarrow | simulation and Parquet output |
 | duckdb | dev warehouse and loader |
 | faker | names and domains |

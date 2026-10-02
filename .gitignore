@@ -1,0 +1,17 @@
+# secrets
+.env
+*.p8
+
+# generated data and build output
+data/
+target/
+dbt_packages/
+logs/
+reports/build/
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
