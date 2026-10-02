@@ -53,6 +53,7 @@ dashboard:  ## compile analyses/dashboard and run each query on the local DuckDB
 demo:  ## fresh-clone DuckDB demo: generate, load, build and test, then print the dashboard
 	$(MAKE) data SEED=$(SEED)
 	$(MAKE) build
+	$(MAKE) close-history FORCE=1
 	$(MAKE) dashboard
 
 close:  ## post one as-of close: make close PERIOD=2026-09 [FORCE=1] [TARGET=snowflake]
