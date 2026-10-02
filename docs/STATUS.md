@@ -2,6 +2,32 @@
 
 Updated 2026-10-02 after the focus-scope reconcile. The first audit (commit `98ed111`) is in git history.
 
+## Progress log
+
+### generator-done
+
+- **Built:**
+  - Stripe customer, invoice, charge, refund, and balance_transaction, synced from Orb.
+  - Salesforce renewal and expansion opportunities.
+  - `truth_mrr_monthly`, `truth_revenue_monthly`, `truth_identity`, and `defect_manifest`.
+  - Injection of D01, D06, D09, and D13, with D03 recorded.
+  - Timestamps on LA business dates (ADR-014).
+  - The DuckDB loader behind `make data`.
+- **Default run (seed 42):**
+  - 32 tables loaded into `data/seats_to_cash.duckdb` in 33 s.
+  - Stripe: 935 customers, 20,280 invoice versions, 10,530 charge versions, 106 refunds, 10,086 balance transactions.
+  - truth_mrr_monthly: 15,936 rows. September 2026 truth ARR, excluding internal tailnets: $1,641,205.80.
+- **Defect manifest (306 rows):**
+  - D01: 13 customers.
+  - D03: 40 internal tailnets.
+  - D06: 70 invoices.
+  - D09: 103 charges.
+  - D13: 20 bundles of customer, invoice, charge, and balance transaction (80 rows).
+- **Tests:** `make test-gen` 91 passed. The new tests rebuild v4 seats, v3 usage MRR, and enterprise ARR from the raw sources and match the answer key to the cent.
+- **Open:** D09 hit no Salesforce opportunity at seed 42. The rate is 1% of about 250 opportunities, so this happens about 8% of the time; the CI test tolerates zero.
+
+## Earlier status (focus-scope reconcile)
+
 ## Where things stand
 
 - **Generator:** builds and tests `raw_app` (8 tables), `raw_orb` (10 tables), enterprise `raw_salesforce` (account, opportunity, lead, user), and `truth_enterprise_contracts`. Output is deterministic and generation works offline.
