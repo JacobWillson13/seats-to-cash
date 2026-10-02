@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: int_identity
+    description: One row per tailnet with its Orb, canonical Stripe, and Salesforce IDs (resolves D01).
+    columns:
+      - name: tailnet_id
+        data_tests: [unique, not_null]
+  - name: int_stripe_customer_map
+    columns:
+      - name: stripe_customer_id
+        data_tests: [unique, not_null]
+      - name: canonical_stripe_customer_id
+        data_tests: [not_null]
+  - name: int_invoice_lines
+    columns:
+      - name: line_id
+        data_tests: [unique, not_null]
+      - name: tailnet_id
+        data_tests: [not_null]
+  - name: int_subscription_terms_monthly
+    data_tests:
+      - dbt_utils_free_unique_combination:
+          columns: [subscription_id, month]
+  - name: int_line_revenue_daily
+    description: Daily revenue allocation per invoice line, residual on the last service day.

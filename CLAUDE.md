@@ -23,7 +23,7 @@ Features set the scope boundary, not raw tables (ADR-012). Keep every raw table 
 ## Hard rules
 
 - Synthetic people and companies only; use `.example` for invented business domains.
-- The answer key is restricted to audit models and generator/tests. Run `scripts/check_truth_fence.py` after dbt work (the script arrives with PLAN task c).
+- The answer key is restricted to audit models and generator/tests. Run `scripts/check_truth_fence.py` after dbt work .
 - Deterministic generation: simulation clock only, explicit NumPy RNG streams, stable ordering, fixed Parquet options. Never use wall-clock time, stdlib random, unseeded RNG, or hash-dependent output order.
 - `seeds/price_book.csv` is the single price authority. No hardcoded plan IDs or prices in Python/SQL.
 - USD only. Stripe minor units are integer cents; Orb amounts are decimal strings; marts use `numeric(18,2)` USD.
@@ -37,15 +37,16 @@ Features set the scope boundary, not raw tables (ADR-012). Keep every raw table 
 | Command | Purpose | Available |
 |---|---|---|
 | `make setup` | Install locked dependencies and hooks | now |
-| `make data SEED=42` | Generate source Parquet; loads DuckDB raw schemas from PLAN task b | now (Parquet only) |
+| `make data SEED=42` | Generate source Parquet and load the DuckDB raw schemas | now |
 | `make test-gen` | Generator invariants, fixtures, determinism, and offline checks | now |
 | `make lint` | Ruff checks and formatting | now |
 | `make seeds` | Rebuild the committed email-domain and close-calendar seeds | now |
-| `make build` | dbt build on DuckDB | PLAN task c |
-| `make close PERIOD=2026-09` | Build and append one as-of close | PLAN task d |
-| `make close-history` | Replay April–September 2026 closes | PLAN task d |
-| `make snowflake` | Snowflake load and dbt build, run locally by the owner | PLAN task e |
-| `make demo` | Fresh-clone DuckDB demo | PLAN task f |
+| `make build` | dbt build on DuckDB, then the truth-fence check | now |
+| `make test` | Every pytest suite | now |
+| `make close PERIOD=2026-09` | Build and append one as-of close | PLAN tier 2 |
+| `make close-history` | Replay April–September 2026 closes | PLAN tier 2 |
+| `make snowflake` | Snowflake load and dbt build, run locally by the owner | PLAN tier 1 |
+| `make demo` | Fresh-clone DuckDB demo | PLAN tier 1 |
 
 ## Workflow
 

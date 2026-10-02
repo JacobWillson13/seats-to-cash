@@ -1,0 +1,7 @@
+{# A generic uniqueness test over several columns, without a package dependency. #}
+{% test dbt_utils_free_unique_combination(model, columns) %}
+select {{ columns | join(', ') }}, count(*) as n
+from {{ model }}
+group by {{ columns | join(', ') }}
+having count(*) > 1
+{% endtest %}

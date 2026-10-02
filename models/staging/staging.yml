@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: stg_app__tailnets
+    columns:
+      - name: tailnet_id
+        data_tests: [unique, not_null]
+  - name: stg_orb__customers
+    columns:
+      - name: orb_customer_id
+        data_tests: [unique, not_null]
+  - name: stg_orb__subscriptions
+    columns:
+      - name: subscription_id
+        data_tests: [unique, not_null]
+  - name: stg_orb__invoices
+    columns:
+      - name: orb_invoice_id
+        data_tests: [unique, not_null]
+  - name: stg_stripe__customers
+    columns:
+      - name: stripe_customer_id
+        data_tests: [unique, not_null]
+  - name: stg_stripe__invoices
+    description: One live invoice per Orb invoice (D06 duplicates and D13 test rows removed).
+    columns:
+      - name: stripe_invoice_id
+        data_tests: [unique, not_null]
+      - name: orb_invoice_id
+        data_tests: [unique, not_null]
+  - name: stg_stripe__charges
+    columns:
+      - name: stripe_charge_id
+        data_tests: [unique, not_null]
+  - name: stg_stripe__balance_transactions
+    columns:
+      - name: balance_transaction_id
+        data_tests: [unique, not_null]
+  - name: stg_salesforce__accounts
+    columns:
+      - name: salesforce_account_id
+        data_tests: [unique, not_null]
+  - name: stg_salesforce__opportunities
+    columns:
+      - name: opportunity_id
+        data_tests: [unique, not_null]

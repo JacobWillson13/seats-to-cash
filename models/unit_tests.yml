@@ -1,0 +1,96 @@
+version: 2
+
+unit_tests:
+  - name: proration_line_recognizes_over_remaining_days
+    description: >
+      A seat added on June 16 is billed on the July 1 invoice as a proration line for June 16-30
+      ($4.00, BILLING_DESIGN example 1). Its revenue is spread over those 15 days at $0.27 a day
+      with the $0.22 residual on June 30. A negative discount line rounds away from zero.
+    model: int_line_revenue_daily
+    given:
+      - input: ref('int_invoice_lines')
+        rows:
+          - {line_id: L1, tailnet_id: t1, is_internal: false, line_class: proration, service_start: 2026-06-16, service_end: 2026-06-30, amount_usd: 4.00}
+          - {line_id: D1, tailnet_id: t1, is_internal: false, line_class: discount, service_start: 2026-07-01, service_end: 2026-07-31, amount_usd: -12.00}
+    expect:
+      rows:
+          - {line_id: L1, revenue_date: 2026-06-16, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-17, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-18, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-19, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-20, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-21, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-22, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-23, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-24, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-25, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-26, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-27, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-28, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-29, revenue_usd: 0.27}
+          - {line_id: L1, revenue_date: 2026-06-30, revenue_usd: 0.22}
+          - {line_id: D1, revenue_date: 2026-07-01, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-02, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-03, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-04, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-05, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-06, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-07, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-08, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-09, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-10, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-11, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-12, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-13, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-14, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-15, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-16, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-17, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-18, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-19, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-20, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-21, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-22, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-23, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-24, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-25, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-26, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-27, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-28, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-29, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-30, revenue_usd: -0.39}
+          - {line_id: D1, revenue_date: 2026-07-31, revenue_usd: -0.30}
+
+  - name: repricing_is_separated_from_expansion
+    description: >
+      t1 migrates from v3 Starter (5 billable users, $360 ARR) to v4 Standard (8 seats, $768
+      ARR): 3 extra units at the prior $72 per unit are expansion ($216) and the rest is
+      repricing ($192). t2 adds seats on an unchanged plan: all expansion. t3 renews an
+      enterprise contract with the same seats at a higher value: all repricing. t4 had 0 billable
+      users, so its whole change on migration is repricing. Everyone churns in June.
+    model: fct_arr_movements
+    given:
+      - input: ref('fct_mrr_monthly')
+        rows:
+          - {month: 2026-04-01, tailnet_id: t1, plan_code: starter, price_version: v3, billing_basis: mau, discount_pct: 0, quantity: 5, arr_usd: 360.00}
+          - {month: 2026-05-01, tailnet_id: t1, plan_code: standard, price_version: v4, billing_basis: seat, discount_pct: 0, quantity: 8, arr_usd: 768.00}
+          - {month: 2026-04-01, tailnet_id: t2, plan_code: premium, price_version: v4, billing_basis: seat, discount_pct: 0, quantity: 3, arr_usd: 648.00}
+          - {month: 2026-05-01, tailnet_id: t2, plan_code: premium, price_version: v4, billing_basis: seat, discount_pct: 0, quantity: 5, arr_usd: 1080.00}
+          - {month: 2026-04-01, tailnet_id: t3, plan_code: enterprise, price_version: v4, billing_basis: contract, discount_pct: 0, quantity: 50, arr_usd: 120000.00}
+          - {month: 2026-05-01, tailnet_id: t3, plan_code: enterprise, price_version: v4, billing_basis: contract, discount_pct: 0, quantity: 50, arr_usd: 129600.00}
+          - {month: 2026-04-01, tailnet_id: t4, plan_code: starter, price_version: v3, billing_basis: mau, discount_pct: 0, quantity: 0, arr_usd: 0.00}
+          - {month: 2026-05-01, tailnet_id: t4, plan_code: standard, price_version: v4, billing_basis: seat, discount_pct: 0, quantity: 3, arr_usd: 288.00}
+    expect:
+      rows:
+          - {month: 2026-04-01, tailnet_id: t1, movement_type: new, arr_delta_usd: 360.00}
+          - {month: 2026-04-01, tailnet_id: t2, movement_type: new, arr_delta_usd: 648.00}
+          - {month: 2026-04-01, tailnet_id: t3, movement_type: new, arr_delta_usd: 120000.00}
+          - {month: 2026-05-01, tailnet_id: t1, movement_type: expansion, arr_delta_usd: 216.00}
+          - {month: 2026-05-01, tailnet_id: t1, movement_type: repricing, arr_delta_usd: 192.00}
+          - {month: 2026-05-01, tailnet_id: t2, movement_type: expansion, arr_delta_usd: 432.00}
+          - {month: 2026-05-01, tailnet_id: t3, movement_type: repricing, arr_delta_usd: 9600.00}
+          - {month: 2026-05-01, tailnet_id: t4, movement_type: repricing, arr_delta_usd: 288.00}
+          - {month: 2026-06-01, tailnet_id: t1, movement_type: churn, arr_delta_usd: -768.00}
+          - {month: 2026-06-01, tailnet_id: t2, movement_type: churn, arr_delta_usd: -1080.00}
+          - {month: 2026-06-01, tailnet_id: t3, movement_type: churn, arr_delta_usd: -129600.00}
+          - {month: 2026-06-01, tailnet_id: t4, movement_type: churn, arr_delta_usd: -288.00}

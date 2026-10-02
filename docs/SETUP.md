@@ -9,9 +9,10 @@ make setup                       # uv sync, dbt deps once dbt exists, pre-commit
 make test-gen
 make lint
 make data CONFIG=config/ci.yml   # small dataset; `make data SEED=42` for the full one
+make build                       # dbt seed, run, and test on DuckDB, then the truth fence
 ```
 
-`make build` (PLAN task c) and `make demo` (task f) are added by later tasks; `make demo` is the DuckDB path and the final README command.
+`make data` writes Parquet under `data/` and loads it into `data/seats_to_cash.duckdb`; `make build` builds every dbt model into that file (`DUCKDB_PATH` overrides the path). `make test` runs every pytest suite.
 
 The committed seeds in `seeds/` are ready to use. Generation does not rebuild seeds or need network access; only `make seeds` rebuilds them, and it needs the network.
 

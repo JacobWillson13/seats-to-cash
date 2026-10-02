@@ -44,7 +44,12 @@ ARR is month-end MRR multiplied by 12. Invoices are evidence for billed amounts,
 
 Status: Accepted
 
-For plan and price changes, split the value change into quantity movement at prior price and repricing at prior quantity. Classify remaining changes as new, expansion, contraction, churn, or reactivation. The waterfall must reconcile to the month-end ARR delta.
+When a tailnet's plan, price version, or discount changes between month ends, or an enterprise contract's value per seat changes, its ARR change is split in two:
+
+- the quantity change valued at last month's ARR per unit is expansion or contraction;
+- the remainder is repricing.
+
+Repricing is therefore the price change at the new quantity, and the split closes exactly. With no price change, the whole change is expansion or contraction. A tailnet absent last month is new (first ever) or reactivation; one absent this month is churn. A v3 → v4 migration compares billable active users with held seats, so repricing also carries the loss of the three free users. The monthly waterfall must reconcile to the month-end ARR delta; `fct_arr_waterfall` and a dbt test check it every month.
 
 ## ADR-008: As-of source handling
 
@@ -138,6 +143,23 @@ Defects are injected into clean rows after the answer key is built, each from it
 Status: Accepted
 
 `make data` writes Parquet and then loads every file into `data/seats_to_cash.duckdb` as `raw_<source>.<table>` (`--no-load` skips it). The load replaces raw tables only, so dbt schemas in the same file survive a reload. Parquet is the deterministic artifact; the DuckDB file is not byte-compared.
+
+## ADR-020: dbt conventions
+
+Status: Accepted
+
+- **Layers:** staging views (`staging`), intermediate tables (`intermediate`), marts (`marts`), and audits (`audit`), each in its own schema. `profiles.yml` sits at the repo root and reads secrets through `env_var()`.
+- **Staging:**
+  - Keeps the latest version of each version log.
+  - Drops deleted (D09) and test-mode (D13) rows.
+  - Deduplicates Stripe invoices by `orb_invoice_id` (D06).
+  - Converts cents to USD.
+  - Derives local dates with `local_date()`.
+- **Internal tailnets (D03):** flagged in staging and excluded from the finance marts.
+- **Cross-database macros** (`macros/cross_db.sql`) cover time zones, JSON, cents, a numbers table, and keyword column names.
+- **Rounding:** money is `numeric(18,2)`. Any division that must round like the generator goes through integer cents (`div_round_cents`), because DuckDB divides decimals in floating point.
+- **Truth fence:** only `models/audit/` reads the answer key, and `scripts/check_truth_fence.py` enforces it in `make build`.
+- **No package dependencies:** the one multi-column uniqueness test is a local generic test.
 
 ## Dependency log
 

@@ -1,0 +1,60 @@
+name: seats_to_cash
+version: "1.0.0"
+config-version: 2
+profile: seats_to_cash
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests/dbt"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  reporting_tz: America/Los_Angeles  # must match config/simulation.yml reporting_tz
+  reporting_start_date: "2024-01-01"  # must match config/simulation.yml
+  sim_start_date: "2023-01-01"
+  end_date: "2026-09-30"
+  internal_domain: wirefern.example
+
+models:
+  seats_to_cash:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: table
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
+    audit:
+      +materialized: table
+      +schema: audit
+
+seeds:
+  seats_to_cash:
+    +schema: seeds
+    fx_rates:
+      +enabled: false
+    free_email_domains:
+      +enabled: false
+    price_book:
+      +column_types:
+        unit_amount_usd: numeric(18,2)
+        unit_amount_eur: numeric(18,2)
+        unit_amount_gbp: numeric(18,2)
+        discount_pct: numeric(5,4)
+        package_size: integer
+        free_units: integer
+        max_users: integer
+        valid_from: date
+        valid_to: date
+    close_calendar:
+      +column_types:
+        period: varchar
+        close_date: date
+
+flags:
+  send_anonymous_usage_stats: false
