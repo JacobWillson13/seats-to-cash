@@ -24,12 +24,15 @@ people:
   personal_first_share: 0.30           # business creators who ran a personal tailnet first
   same_machine_share: 0.70             # of those, share whose machine registers to both tailnets
   email_localpart_reuse: 0.40          # share reusing the same local part on personal and work email
+  webmail_domains: {gmail.com: 0.55, yahoo.com: 0.12, outlook.com: 0.10, hotmail.com: 0.08, icloud.com: 0.08, proton.me: 0.04, aol.com: 0.03}
 
 personal:
   plus_upgrade_monthly: 0.002          # personal_free -> personal_plus, v3 only
   plus_downgrade_monthly: 0.01         # personal_plus -> personal_free
   plus_retirement_downgrade_share: 0.60    # share of Personal Plus that moves to free after v4
   plus_retirement_window_days: 90          # spread over this many days after v4_effective_date
+  extra_users_mean: 0.6                # Poisson users beyond the creator, capped by the plan's max_users
+  monthly_active_share: 0.70           # chance a personal user is active in a month
 
 trial:
   length_days: 14
@@ -39,13 +42,40 @@ trial:
 
 seats:
   initial_users_lognormal: {mean: 1.6, sigma: 0.9}   # median about 5 users
-  monthly_user_growth: 0.04
-  removal_monthly: 0.05                # base seat-removal hazard
+  monthly_user_growth: 0.04            # net; invites arrive at (growth + departures) per user per month
+  company_size_lognormal: {mean: 3.7, sigma: 1.1}    # employees, median about 40; caps a tailnet's users
+  user_departure_monthly: 0.03         # per logged-in user; vacates a seat
+  growth_gamma_shape: 1.0              # per-tailnet growth multiplier ~ Gamma(shape), mean 1
+  bring_to_work_growth_multiplier: 1.5 # bring-to-work tailnets add users faster (SPEC 4.3)
+  removal_monthly: 0.05                # base seat-removal hazard (admin trims seats or inactive users)
   headroom_seats_mean: 1.5             # extra seats held above occupied
   auto_seat_daily_prob_when_full: 0.02
   low_utilization_threshold: 0.60
   low_utilization_days: 60
   low_utilization_hazard_multiplier: 3.0   # on seat removal and voluntary churn
+  approval_required_share: 0.20        # tailnets that require admin approval of new users
+  approval_lag_days: [0, 2]
+  login_lag_days: [0, 4]               # invite (or approval) to first login
+  never_login_share: 0.05              # invites that are never accepted
+  invite_expiry_days: 30               # unaccepted invites are revoked after this
+  role_shares: {admin: 0.10, billing_admin: 0.05, member: 0.85}   # non-creator users
+
+activity:
+  user_active_weekday: 0.80            # daily activity chance, times the user's propensity
+  user_active_weekend: 0.30
+  user_propensity_beta: [4.0, 1.5]
+  dormant_user_share: 0.10             # users who almost never connect after logging in
+  dormant_user_propensity: 0.01
+  devices_per_user_mean: 2.2           # 1 + Poisson(mean - 1)
+  device_os_shares: {macos: 0.30, windows: 0.25, linux: 0.15, ios: 0.18, android: 0.12}
+  advanced_feature_interest_share: 0.30   # tailnets that want scim, mdm_config, posture_integration
+  premium_feature_interest_share: 0.25    # tailnets that want flow_logs, log_streaming, jit_access
+  feature_daily_prob: {ssh: 0.35, funnel: 0.05, exit_node: 0.25, subnet_router: 0.30, scim: 0.10, mdm_config: 0.06, posture_integration: 0.05, flow_logs: 0.15, log_streaming: 0.10, jit_access: 0.08}
+  feature_attempts_mean: 2.0           # 1 + Poisson(mean - 1) on a day the feature is used
+  tagged_resources_mean: 8             # Poisson, tailnets within the 50 included
+  tagged_resources_overage_mean: 40    # Poisson above 50, for addons.tagged_resource_overage_share
+  ephemeral_share: 0.20
+  ephemeral_minutes_mean: 180
 
 upgrades:
   standard_to_premium_monthly: 0.01

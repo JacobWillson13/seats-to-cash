@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from generator.config import ConfigError, cross_check, load_config
+from generator.pipeline import run
 from generator.pricebook import PriceBookError
 from generator.reference import SeedError, Seeds
 
@@ -62,8 +63,17 @@ def main(argv: list[str] | None = None) -> int:
             f"{config.sim_start_date} .. {config.end_date}, {len(seeds.price_book)} prices)"
         )
         return 0
-    print("generator: simulation stages are not implemented yet (PLAN 1.3+)", file=sys.stderr)
-    return 1
+
+    out_dir = args.out or config.output.data_dir
+    result = run(config, seeds, out_dir, defects=not args.no_defects)
+    for name, rows in result.row_counts.items():
+        print(f"  raw_app.{name:<26} {rows:>10,} rows")
+    for name, seconds in result.timings.items():
+        print(f"  {name:<46} {seconds:6.2f}s")
+    print(f"  {'total':<46} {sum(result.timings.values()):6.2f}s")
+    print(f"generator: wrote {out_dir / 'raw'} and {result.report_path}")
+    print("generator: billing, payments, CRM, and finance stages arrive with PLAN 1.5 to 1.8")
+    return 0
 
 
 if __name__ == "__main__":

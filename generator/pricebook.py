@@ -116,6 +116,17 @@ class PriceBook:
         except KeyError:
             raise LookupError(f"no price with price_id {price_id!r}") from None
 
+    def plan_version_price(self, plan_code: str, version: str) -> Price:
+        """Existing plan terms by version, even after that version stops selling."""
+        matches = [
+            p for p in self._prices if p.plan_code == plan_code and p.price_version == version
+        ]
+        if len(matches) != 1:
+            raise LookupError(
+                f"expected one {plan_code!r} price for {version}, found {len(matches)}"
+            )
+        return matches[0]
+
     def list_price(self, plan_code: str, on_date: dt.date) -> Price:
         """The price a new customer is sold for `plan_code` on `on_date`."""
         matches = [p for p in self._prices if p.plan_code == plan_code and p.on_sale(on_date)]

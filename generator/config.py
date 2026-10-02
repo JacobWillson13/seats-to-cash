@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from generator.clock import first_of_next_month, months_between
 from generator.pricebook import PriceBook
-from generator.reference import Seeds
+from generator.reference import FEATURES, Seeds
 
 Probability = Annotated[float, Field(ge=0, le=1)]
 Multiplier = Annotated[float, Field(gt=0)]
@@ -26,6 +26,8 @@ PositiveInt = Annotated[int, Field(gt=0)]
 NonNegativeInt = Annotated[int, Field(ge=0)]
 Marketplace = Literal["aws", "azure"]
 Currency = Literal["USD", "EUR", "GBP"]
+Role = Literal["admin", "billing_admin", "member"]
+DeviceOs = Literal["macos", "windows", "linux", "ios", "android"]
 
 SHARE_TOLERANCE = 1e-9
 
@@ -76,6 +78,12 @@ class People(_Section):
     personal_first_share: Probability
     same_machine_share: Probability
     email_localpart_reuse: Probability
+    webmail_domains: dict[str, Probability]
+
+    @model_validator(mode="after")
+    def _shares(self) -> People:
+        _check_shares("webmail_domains", self.webmail_domains, total=1)
+        return self
 
 
 class Personal(_Section):
@@ -83,6 +91,8 @@ class Personal(_Section):
     plus_downgrade_monthly: Probability
     plus_retirement_downgrade_share: Probability
     plus_retirement_window_days: PositiveInt
+    extra_users_mean: NonNegative
+    monthly_active_share: Probability
 
 
 class Trial(_Section):
@@ -95,12 +105,54 @@ class Trial(_Section):
 class Seats(_Section):
     initial_users_lognormal: LogNormal
     monthly_user_growth: NonNegative
+    company_size_lognormal: LogNormal
+    user_departure_monthly: Probability
+    growth_gamma_shape: Annotated[float, Field(gt=0)]
+    bring_to_work_growth_multiplier: Multiplier
     removal_monthly: Probability
     headroom_seats_mean: NonNegative
     auto_seat_daily_prob_when_full: Probability
     low_utilization_threshold: Probability
     low_utilization_days: PositiveInt
     low_utilization_hazard_multiplier: Multiplier
+    approval_required_share: Probability
+    approval_lag_days: tuple[NonNegativeInt, NonNegativeInt]
+    login_lag_days: tuple[NonNegativeInt, NonNegativeInt]
+    never_login_share: Probability
+    invite_expiry_days: PositiveInt
+    role_shares: dict[Role, Probability]
+
+    @model_validator(mode="after")
+    def _ranges_and_shares(self) -> Seats:
+        _check_range("approval_lag_days", self.approval_lag_days)
+        _check_range("login_lag_days", self.login_lag_days)
+        _check_shares("role_shares", self.role_shares, total=1)
+        return self
+
+
+class Activity(_Section):
+    user_active_weekday: Probability
+    user_active_weekend: Probability
+    user_propensity_beta: tuple[Annotated[float, Field(gt=0)], Annotated[float, Field(gt=0)]]
+    dormant_user_share: Probability
+    dormant_user_propensity: Probability
+    devices_per_user_mean: Annotated[float, Field(ge=1)]
+    device_os_shares: dict[DeviceOs, Probability]
+    advanced_feature_interest_share: Probability
+    premium_feature_interest_share: Probability
+    feature_daily_prob: dict[str, Probability]
+    feature_attempts_mean: Annotated[float, Field(ge=1)]
+    tagged_resources_mean: NonNegative
+    tagged_resources_overage_mean: NonNegative
+    ephemeral_share: Probability
+    ephemeral_minutes_mean: NonNegative
+
+    @model_validator(mode="after")
+    def _shares(self) -> Activity:
+        _check_shares("device_os_shares", self.device_os_shares, total=1)
+        if sorted(self.feature_daily_prob) != sorted(FEATURES):
+            raise ValueError(f"feature_daily_prob must have exactly the features {list(FEATURES)}")
+        return self
 
 
 class Upgrades(_Section):
@@ -231,6 +283,7 @@ class SimulationConfig(_Section):
     personal: Personal
     trial: Trial
     seats: Seats
+    activity: Activity
     upgrades: Upgrades
     churn: Churn
     enterprise: Enterprise
@@ -361,6 +414,9 @@ def cross_check(config: SimulationConfig, seeds: Seeds) -> None:
 
     if missing := sorted(set(config.population.currencies) - set(seeds.price_book.currencies)):
         problems.append(f"price book has no unit_amount column for currencies {missing}")
+
+    if unknown := sorted(set(config.people.webmail_domains) - seeds.public_email_domains):
+        problems.append(f"people.webmail_domains are not public email domains: {unknown}")
 
     plan_rows = {(p.plan_code, p.price_version) for p in seeds.price_book}
     if missing := sorted(set(seeds.entitlements.plans) - plan_rows):
