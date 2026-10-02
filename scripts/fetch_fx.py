@@ -1,12 +1,14 @@
-"""Build seeds/fx_rates.csv: USD per unit of EUR and GBP for every day the simulation needs.
+"""Build seeds/fx_rates.csv: USD per unit of EUR and GBP for every day of the simulation.
 
 Source: ECB euro reference rates (EUR base), converted to USD per unit. Covers sim_start_date
-through extract_date, one row per calendar day and currency:
+through end_date, one row per calendar day and currency:
 - `ecb`: a published ECB rate for that day.
 - `ecb_carried_forward`: a weekend or ECB holiday, carrying the last published rate.
-- `simulated`: no ECB data (offline, or past the last published date). A seeded random walk,
-  so the demo never needs the network.
-Run once; the CSV is committed.
+The committed seed holds only these two sources. If ECB data is unreachable or doesn't reach
+end_date, the script fails rather than inventing rates.
+
+`--offline` writes a seeded random walk labeled `simulated`, for scratch builds without the
+network. It refuses to overwrite the committed seed.
 Usage: uv run python scripts/fetch_fx.py [--config ...] [--out ...] [--offline]
 """
 
@@ -28,14 +30,16 @@ import numpy as np
 from generator.config import load_config
 
 ECB_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-hist.zip"
+COMMITTED_SEED = Path(__file__).resolve().parents[1] / "seeds" / "fx_rates.csv"
 CURRENCIES = ("EUR", "GBP")
 QUANTUM = Decimal("0.000001")
-# Fallback random walk: illustrative starting rates and daily log volatility.
-FALLBACK_START = {"EUR": Decimal("1.070000"), "GBP": Decimal("1.210000")}
-FALLBACK_DAILY_VOL = 0.004
-FALLBACK_RNG_STREAM = 0xF1  # keeps the walk independent of generator streams
+# Offline random walk: illustrative starting rates and daily log volatility.
+OFFLINE_START = {"EUR": Decimal("1.070000"), "GBP": Decimal("1.210000")}
+OFFLINE_DAILY_VOL = 0.004
+OFFLINE_RNG_STREAM = 0xF1  # keeps the walk independent of generator streams
 
 Rates = dict[str, Decimal]
+Row = tuple[dt.date, str, Decimal, str]
 
 
 def fetch_ecb() -> dict[dt.date, Rates]:
@@ -58,58 +62,72 @@ def fetch_ecb() -> dict[dt.date, Rates]:
     return published
 
 
-def daily_rates(
-    published: dict[dt.date, Rates], start: dt.date, end: dt.date, seed: int
-) -> list[tuple[dt.date, str, Decimal, str]]:
-    rng = np.random.default_rng([seed, FALLBACK_RNG_STREAM])
-    last_published = max(published) if published else None
-    earlier = [d for d in published if d <= start]
-    current = dict(published[max(earlier)]) if earlier else dict(FALLBACK_START)
-
-    rows = []
+def _days(start: dt.date, end: dt.date):
     day = start
     while day <= end:
-        if day in published:
-            current, source = dict(published[day]), "ecb"
-        elif earlier and last_published is not None and day <= last_published:
-            source = "ecb_carried_forward"
-        else:
-            source = "simulated"
-            if day.weekday() < 5:  # markets move on weekdays; weekends carry
-                for currency in CURRENCIES:
-                    step = Decimal(repr(math.exp(rng.normal(0.0, FALLBACK_DAILY_VOL))))
-                    current[currency] = (current[currency] * step).quantize(QUANTUM)
-        rows.extend((day, c, current[c], source) for c in CURRENCIES)
+        yield day
         day += dt.timedelta(days=1)
+
+
+def ecb_daily_rates(published: dict[dt.date, Rates], start: dt.date, end: dt.date) -> list[Row]:
+    earlier = [d for d in published if d <= start]
+    if not earlier:
+        raise ValueError(f"ECB data starts after {start}")
+    if max(published) < end:
+        raise ValueError(f"ECB data ends {max(published)}, before end_date {end}")
+    current = published[max(earlier)]
+    rows: list[Row] = []
+    for day in _days(start, end):
+        source = "ecb_carried_forward"
+        if day in published:
+            current, source = published[day], "ecb"
+        rows.extend((day, c, current[c], source) for c in CURRENCIES)
+    return rows
+
+
+def simulated_daily_rates(start: dt.date, end: dt.date, seed: int) -> list[Row]:
+    rng = np.random.default_rng([seed, OFFLINE_RNG_STREAM])
+    current = dict(OFFLINE_START)
+    rows: list[Row] = []
+    for day in _days(start, end):
+        if day.weekday() < 5 and day != start:  # markets move on weekdays; weekends carry
+            for currency in CURRENCIES:
+                step = Decimal(repr(math.exp(rng.normal(0.0, OFFLINE_DAILY_VOL))))
+                current[currency] = (current[currency] * step).quantize(QUANTUM)
+        rows.extend((day, c, current[c], "simulated") for c in CURRENCIES)
     return rows
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", type=Path, default=Path("config/simulation.yml"))
-    parser.add_argument("--out", type=Path, default=Path("seeds/fx_rates.csv"))
-    parser.add_argument("--offline", action="store_true", help="skip the ECB download")
+    parser.add_argument("--out", type=Path, default=COMMITTED_SEED)
+    parser.add_argument("--offline", action="store_true", help="simulated walk, no network")
     args = parser.parse_args(argv)
-
     config = load_config(args.config)
-    published: dict[dt.date, Rates] = {}
-    if not args.offline:
-        try:
-            published = fetch_ecb()
-        except (urllib.error.URLError, TimeoutError, zipfile.BadZipFile, KeyError) as exc:
-            print(
-                f"fetch_fx: ECB download failed ({exc}); using the simulated walk", file=sys.stderr
-            )
 
-    rows = daily_rates(published, config.sim_start_date, config.extract_date, config.seed)
+    if args.offline:
+        if args.out.resolve() == COMMITTED_SEED:
+            print(
+                "fetch_fx: --offline rates are simulated and must not be committed; "
+                "pass --out to a scratch path",
+                file=sys.stderr,
+            )
+            return 2
+        rows = simulated_daily_rates(config.sim_start_date, config.end_date, config.seed)
+    else:
+        try:
+            rows = ecb_daily_rates(fetch_ecb(), config.sim_start_date, config.end_date)
+        except (urllib.error.URLError, TimeoutError, zipfile.BadZipFile, ValueError) as exc:
+            print(f"fetch_fx: cannot build ECB rates: {exc}", file=sys.stderr)
+            return 1
+
     with args.out.open("w", newline="") as f:
         writer = csv.writer(f, lineterminator="\n")
         writer.writerow(["rate_date", "currency", "usd_per_unit", "source"])
         writer.writerows((d.isoformat(), c, f"{r:.6f}", s) for d, c, r, s in rows)
-
     sources = Counter(s for *_, s in rows)
-    latest = f"; last ECB date {max(published)}" if published else ""
-    print(f"wrote {len(rows)} rows to {args.out}: {dict(sorted(sources.items()))}{latest}")
+    print(f"wrote {len(rows)} rows to {args.out}: {dict(sorted(sources.items()))}")
     return 0
 
 
