@@ -44,7 +44,7 @@ ARR is month-end MRR multiplied by 12. Invoices are evidence for billed amounts,
 
 Status: Accepted
 
-When a tailnet's price version changes between month ends (the v3 → v4 migration), its discount changes, or an enterprise contract's value per seat changes (a renewal uplift), its ARR change is split in two:
+When a tailnet's price version changes between month ends (the v3 → v4 migration), its discount changes, its billing basis changes (for example, a self-serve plan moving onto an enterprise contract), or an enterprise contract's value per seat changes at renewal or expansion, its ARR change is split in two:
 
 - the quantity change valued at last month's ARR per unit is expansion or contraction;
 - the remainder is repricing.
