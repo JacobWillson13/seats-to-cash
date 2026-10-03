@@ -1,106 +1,163 @@
 # seats-to-cash
 
-A finance data stack for a fictional product-led networking company, Wirefern, built as an analytics engineering work sample. It answers one question end to end: **how much of ARR growth is real expansion, and how much is repricing as legacy active-user plans move to seat plans**, and do billings, revenue, and cash tie out along the way.
+[![ci](https://github.com/JacobWillson13/seats-to-cash/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobWillson13/seats-to-cash/actions/workflows/ci.yml)
 
-**All data is synthetic.** Pricing mechanics are modeled on Tailscale's public pricing page as of October 2026. I'm not affiliated with Tailscale and used no Tailscale data. Pre-April 2026 (v3) prices are illustrative.
+**A finance data stack for a product-led SaaS company, built on dbt and Snowflake, where every number is checked against an answer key.**
 
-## Results (default run, seed 42)
+The company is fictional (Wirefern, a mesh VPN), and **all data is synthetic.** The pricing mechanics are modeled on Tailscale's public pricing page as of October 2026: free personal plans, per-seat business plans with proration and auto seats, annual enterprise contracts, and the April 2026 move from per-active-user to per-seat pricing. Legacy (pre-April 2026) prices are illustrative. I'm not affiliated with Tailscale and used no Tailscale data.
 
-| | |
-|---|---|
-| ARR, Dec 2025 → Sep 2026 | $980,882.97 → **$1,640,774.80** (+$659,891.83, +67%) |
-| Jan–Sep 2026 movements | new $424,388.00 · expansion $509,198.13 · **repricing $103,315.41** · contraction −$128,256.00 · churn −$282,509.71 · reactivation $33,756.00 |
-| Repricing split | $22,392.00 from 44 tailnets migrating v3 → v4 · $80,923.41 from enterprise renewal uplifts |
-| Jan–Sep 2026 billings / revenue / net cash | $1,124,916.21 / $968,768.24 / $1,092,724.93 (fees $14,308.42, refunds $10,718.80, credit notes $7,429.00) |
-| Deferred revenue, 30 Sep 2026 | $478,489.70 |
-| MRR vs. answer key | **14,924 / 14,924** tailnet-months match to the cent |
-| Revenue vs. answer key | **15,247 / 15,247** tailnet-months match to the cent |
-| Identity vs. answer key | 28,070 / 28,070 tailnets resolve to the true Stripe customer and Salesforce account |
-| Planted defects handled | D01 14/14 · D03 40/40 · D05 36/36 · D06 68/68 · D09 100/100 · D13 80/80 |
-| Migration exposure (Sep 2026) | 453 legacy active-user tailnets, $437,328 legacy ARR → $664,200 projected on v4 seats (+$226,872); risk tiers: 396 high, 46 medium, 11 low |
-| Month-end closes, Apr–Sep 2026 | 6 closes posted to an append-only ledger; 16 closed figures restated afterwards in 5 of the 6 periods, every one explained by rows loaded after the close. Revenue restated: April −$18.00 (late refund), June −$65.00 (late refund and two credit notes), July −$48.00 (late credit note), August −$9.00 (late refund), September −$108.00 (late refund and credit note) |
-| Salesforce account signals | 152 enterprise accounts; 128 sync-eligible for Hightouch with $1,182,734.80 ARR, 48 of them still on legacy pricing |
-| Reconciliations | ARR waterfall closes every month; deferred-revenue rollforward ties; Orb invoices = deduplicated Stripe invoices; Stripe charges − refunds − fees = balance-transaction net |
-| `make demo` from a fresh clone | 60 s on a cloud container: 32 raw and answer-key tables and 129 dbt nodes (models, seeds, data tests, unit tests), all passing; `make close-history` adds 97 s |
+**Walkthrough video (4 min):** VIDEO_URL
 
-What the numbers say: most 2026 growth is new logos and seat expansion. Migration repricing is real but small so far ($22k of ARR), because only customers who chose to move to v4 have moved; the larger price effect this year is enterprise renewal uplift. The bigger number is still ahead: moving the remaining legacy tailnets to seats would add about $227k of ARR. 247 of them face more than a 40% increase, and 149 more pay nothing today because they have three or fewer active users.
+![Streamlit in Snowflake report](docs/img/streamlit_app.png)
 
-## The report
+## The question
 
-![Streamlit in Snowflake app](docs/img/streamlit_app.png)
-<!-- Placeholder: replace docs/img/streamlit_app.png with a screenshot of the app running in Snowflake. -->
+**How much of ARR growth is real expansion, and how much is repricing as legacy active-user plans move to seat plans? And do billings, revenue, and cash tie out along the way?**
 
-The demo report is a one-page [Streamlit in Snowflake](docs/SETUP.md#streamlit-in-snowflake-report) app, [`apps/streamlit_app.py`](apps/streamlit_app.py). It is not a Snowsight dashboard: Snowflake retired those in 2026, disabling new dashboard creation on April 20, 2026, and Streamlit in Snowflake is the official replacement. The page has:
+## The answers (default run, seed 42)
 
-- a KPI row: current ARR, ARR growth since December 2025, repricing share of 2026 growth, the projected ARR change from legacy migration, and defects handled;
-- the ARR trend and the 2026 waterfall, with repricing in its own color;
-- billings vs. revenue vs. cash, and the deferred revenue balance;
-- migration exposure by risk tier;
-- the month-end restatements;
-- the defect scorecard and answer-key match rates.
+- **ARR grew 67% in 2026,** from $980,883 in December 2025 to $1,640,775 in September 2026.
+- **$103,315 of that growth (15.7%) is repricing, not expansion.** Only $22,392 comes from customers moving to seat pricing so far. The biggest price effect is self-serve customers moving onto enterprise contract pricing (+$111,733), partly offset by lower per-seat rates on enterprise renewals and expansions (−$30,810).
+- **The bigger price effect is still ahead.** Moving the 453 remaining legacy tailnets to seats would add about $227k of ARR. 396 of them are high risk: 247 face increases over 40%, and 149 pay nothing today.
+- **Billings, revenue, and cash tie out.** The ARR waterfall closes every month, deferred revenue rolls forward to the cent, Orb invoices match deduplicated Stripe invoices, and Stripe cash matches balance transactions.
+- **Every number matches the answer key:** 14,924 of 14,924 customer-months of MRR and 15,247 of 15,247 of revenue, to the cent.
+- **All six planted data defects are handled,** from duplicate Stripe customers to late refunds.
+- **Six month-end closes are immutable.** 16 figures that changed after a close appear as restatements, each traced to the late rows that caused it.
 
 ## Run it
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.12.
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.12. No accounts or credentials needed.
 
 ```bash
+git clone https://github.com/JacobWillson13/seats-to-cash && cd seats-to-cash
 make setup
-make demo     # generate seed-42 data, load DuckDB, dbt build + tests, print the dashboard
+make demo
 ```
 
-Or step by step:
+`make demo` takes about two minutes. It generates the seed-42 data, loads DuckDB, runs the dbt build with every test, posts the April to September 2026 closes, and prints each report query.
 
-- `make data` generates the data and loads `data/seats_to_cash.duckdb`.
-- `make build` runs the dbt build and the answer-key fence.
-- `make close-history` posts the April–September 2026 closes and shows what was restated.
-- `make close PERIOD=2026-09` posts one close; `FORCE=1` replaces a posted one.
-- `make dashboard` runs `analyses/dashboard/*.sql`.
-- `make test` runs every pytest suite. `make data CONFIG=config/ci.yml` builds a 10% dataset in about 10 seconds. `make snowflake` loads the same data into Snowflake and builds there. `make close-history TARGET=snowflake` posts the closes on Snowflake, and `make dashboard-snowflake` prints the compiled dashboard SQL for it. See [docs/SETUP.md](docs/SETUP.md).
+Other commands:
 
-## What's here
+| Command | What it does |
+|---|---|
+| `make data` | Generate the data and load `data/seats_to_cash.duckdb` (`CONFIG=config/ci.yml` for a 10% dataset) |
+| `make build` | dbt build with all tests, plus the answer-key fence check |
+| `make close PERIOD=2026-09` | Post one month-end close; `FORCE=1` replaces a posted one |
+| `make close-history` | Post the April to September 2026 closes |
+| `make dashboard` | Run the report queries in `analyses/dashboard/` |
+| `make test` | Run every pytest suite |
+| `make snowflake` | Load the data into Snowflake and run the same dbt build there (see [docs/SETUP.md](docs/SETUP.md)) |
 
-- **Plans:** free Personal; v3 Starter and Premium billed in arrears per active user after three free users; v4 Standard and Premium billed per seat in advance, with proration and auto seats; annual Enterprise contracts from product-led and direct-sales sources; a nonprofit discount. USD only.
-- **Synthetic sources in vendor shapes**, all in [docs/SCHEMAS.md](docs/SCHEMAS.md):
-  - the product database (`raw_app`);
-  - an Orb billing export (`raw_orb`);
-  - Stripe collections synced from Orb (`raw_stripe`);
-  - enterprise Salesforce (`raw_salesforce`).
-- **An answer key and six planted defects.** The generator writes true MRR, revenue, and identity before injecting defects: duplicate Stripe customers, internal tailnets, late refunds and credit notes, duplicate invoice syncs, soft deletes, and test-mode rows. Audit models score the marts against the key, and only those audit models may read it (`scripts/check_truth_fence.py`).
-- **Repricing as its own ARR movement.** When a tailnet changes price version, the quantity change at the old per-unit price is expansion or contraction, and the remainder is repricing, so the waterfall closes exactly (ADR-007).
-- **dbt on DuckDB and Snowflake:**
-  - staging for every landed table;
-  - identity resolution (`int_identity`);
-  - marts: `fct_mrr_monthly`, `fct_arr_movements`, `fct_arr_waterfall`, `fct_revenue_monthly`, `fct_deferred_revenue_rollforward`, `fct_billings_revenue_cash`, and `dim_customer`;
-  - reconciliation tests;
-  - unit tests for proration and repricing.
-- **Month-end close:** each close builds the books as of its calendar close date and appends 14 metrics to an append-only ledger. Re-closing needs `FORCE=1`. `fct_restatements` explains every figure that changed after a close (ADR-023).
-- **Migration exposure and Salesforce signals:** `fct_migration_exposure` projects each legacy tailnet onto v4 seats with a risk tier. `fct_account_signals` (ARR, seats, utilization, migration risk, sync eligibility) is the model for the Hightouch upsert to Salesforce Account.
-- **LookML** in [lookml/](lookml/): views for MRR and ARR movements and an ARR-movements explore, parse-tested with `lkml`.
-- **The report** in [apps/streamlit_app.py](apps/streamlit_app.py): a Streamlit in Snowflake app over the marts and audits, rendered in a local test against DuckDB.
-- **Dashboard SQL** in [analyses/dashboard/](analyses/dashboard/): ARR trend, ARR waterfall by movement type, billings vs. revenue vs. cash, deferred revenue, migration exposure, restatements, and the defect scorecard.
-- **CI:** a GitHub Actions workflow runs lint, every test suite, the dbt build, and the close history on the 10% dataset.
-
-## How it's built
+## How it works
 
 ```
-generator (Python, seeded, offline)  ->  Parquet  ->  DuckDB raw_* schemas  (or Snowflake via write_pandas)
+generator (Python, seeded, offline)  ->  Parquet  ->  DuckDB  or  Snowflake (raw_* schemas)
     raw_app · raw_orb · raw_stripe · raw_salesforce · raw_truth (answer key)
         -> dbt: staging -> intermediate -> marts, plus audit models against the answer key
-        -> make close: as-of builds -> finance_close.close_ledger -> fct_restatements
-        -> Streamlit in Snowflake report · analyses/dashboard/*.sql · lookml/
-        -> fct_account_signals -> Hightouch -> Salesforce
+        -> month-end close: as-of builds -> append-only ledger -> fct_restatements
+        -> Streamlit in Snowflake report · LookML · report SQL
+        -> fct_account_signals -> Hightouch -> Salesforce Account
 ```
 
-The simulation runs day by day from 2023-01-01 to 2026-09-30, with each day a Los Angeles business date (ADR-014). Billing facts come from recorded lifecycle events, never redrawn. The same seed writes byte-identical Parquet.
+![dbt lineage](docs/img/dbt_lineage.png)
+
+**Synthetic sources in vendor shapes.** A day-by-day simulation from 2023 through September 2026 writes each system's own version of events, in the table shapes Fivetran and Orb produce: the product database, Orb billing exports, Stripe collections synced from Orb, and Salesforce. Schemas are in [docs/SCHEMAS.md](docs/SCHEMAS.md). The same seed always writes byte-identical files.
+
+**An answer key and planted defects.** The generator records the true MRR, revenue, and identity map before injecting six defects:
+
+- duplicate Stripe customers
+- internal test tailnets
+- late refunds and credit notes
+- duplicate invoice syncs
+- soft-deleted rows
+- Stripe test-mode rows
+
+Audit models score the marts against the key, and a CI check fails the build if anything else reads it.
+
+**dbt on DuckDB and Snowflake.** The same project runs on both:
+
+- **Staging:** cleans each source and handles the defects.
+- **Intermediate:** resolves identity across the product, Orb, Stripe, and Salesforce, and allocates each invoice line to days, matching Orb's own allocation to the cent.
+- **Marts:**
+  - `fct_mrr_monthly`
+  - `fct_arr_movements` and `fct_arr_waterfall`
+  - `fct_revenue_monthly`
+  - `fct_deferred_revenue_rollforward`
+  - `fct_billings_revenue_cash`
+  - `fct_migration_exposure`
+  - `fct_account_signals`
+  - `dim_customer`
+- **Tests:**
+  - reconciliation tests for the waterfall, deferred revenue, Orb vs. Stripe, and cash
+  - unit tests for proration, repricing, a leap-day annual invoice, and contract ARR
+
+**ARR is contracted run-rate, not invoices.** In the month a customer migrates, they get their last legacy invoice and their first seat invoice on the same day, so May 2026 billings jump to $192k against $114k of revenue. ARR doesn't jump. Enterprise ARR equals the contract value exactly.
+
+**Repricing is its own movement.** When a tailnet changes price version, the quantity change at the old price counts as expansion or contraction, and the rest is repricing. Tier upgrades count as expansion. The waterfall still closes exactly.
+
+**Month-end close.** Each close rebuilds the books as of its close date (five business days after month end), runs the reconciliations, and appends 14 metrics to an append-only ledger. Re-closing a period is refused unless forced. Rows that arrive late show up as restatements with their cause; nothing reported is silently overwritten.
+
+![Restatements and data quality](docs/img/streamlit_close_quality.png)
+
+## On their stack
+
+- **Snowflake:** the same raw data and dbt project, with key-pair service users, separate transform and read-only roles, and an X-Small warehouse ([scripts/snowflake_setup.sql](scripts/snowflake_setup.sql)).
+
+  ![Snowflake schemas](docs/img/snowflake_schemas.png)
+
+- **Streamlit in Snowflake:** the report in [apps/streamlit_app.py](apps/streamlit_app.py) runs inside Snowflake. Snowsight dashboards were retired in 2026, and Streamlit is Snowflake's replacement. A test renders the app against DuckDB in CI.
+- **Hightouch to Salesforce:** `fct_account_signals` is upserted into Salesforce Account on an external Tailnet ID, with ARR, seats, seat utilization, and migration risk. The latest run sent 128 accounts with 0 rejected.
+
+  ![Hightouch sync](docs/img/hightouch_sync.png)
+
+  | Legacy account: high migration risk, no seats yet | Enterprise account: 25 seats, 32% used |
+  |---|---|
+  | ![Salesforce legacy account](docs/img/salesforce_account_legacy.png) | ![Salesforce enterprise account](docs/img/salesforce_account_enterprise.png) |
+
+- **Looker:** LookML views for MRR and ARR movements plus an explore, in [lookml/](lookml/). They're parse-tested in CI but haven't been run on a live Looker instance.
+- **Fivetran, Orb, Stripe:** represented by their landing table shapes, generated synthetically.
+
+## Detailed results
+
+| Metric | Value |
+|---|---|
+| ARR, Dec 2025 → Sep 2026 | $980,882.97 → $1,640,774.80 (+$659,891.83, +67%) |
+| 2026 movements | new $424,388.00 · expansion $509,198.13 · repricing $103,315.41 · contraction −$128,256.00 · churn −$282,509.71 · reactivation $33,756.00 |
+| Repricing split | +$22,392.00 from 44 tailnets moving v3 → v4 seats · +$111,733.19 from 18 self-serve tailnets moving onto enterprise contracts · −$30,809.78 from lower per-seat rates on 17 enterprise renewals and expansions |
+| 2026 billings / revenue / net cash | $1,124,916.21 / $968,768.24 / $1,092,724.93 (fees $14,308.42, refunds $10,718.80, credit notes $7,429.00) |
+| Deferred revenue, Sep 30, 2026 | $478,489.70 |
+| Answer-key match | MRR 14,924 / 14,924 · revenue 15,247 / 15,247 · identity 28,070 / 28,070 |
+| Planted defects handled | D01 14/14 · D03 40/40 · D05 36/36 · D06 68/68 · D09 100/100 · D13 80/80 |
+| Migration exposure | 453 legacy tailnets: $437,328 → $664,200 ARR on seats (+$226,872); 396 high, 46 medium, 11 low risk |
+| Restatements, Apr to Sep 2026 closes | 16 figures in 5 of 6 periods. Revenue: April −$18, June −$65, July −$48, August −$9, September −$108 |
+| Salesforce signals | 152 enterprise accounts; 128 sync-eligible with $1,182,734.80 ARR, 48 still on legacy pricing |
+| Build | 129 dbt nodes (models, seeds, data tests, unit tests), all passing |
 
 ## Decisions
 
-Every judgment call is in [docs/DECISIONS.md](docs/DECISIONS.md), including the policies that belong to Finance rather than to analytics engineering: revenue and refund timing (ADR-009, ADR-015) and the provisional invoice policy (ADR-011).
+Every judgment call is recorded in [docs/DECISIONS.md](docs/DECISIONS.md). That includes the policies that belong to Finance rather than analytics engineering, such as refund timing and revenue recognition, which are dbt vars with documented defaults. The full specification is in [docs/SPEC.md](docs/SPEC.md).
 
-## Status
+## Known limitations and what's not built
 
-Tiers 1 and 2 of [docs/PLAN.md](docs/PLAN.md) are complete. [docs/STATUS.md](docs/STATUS.md) records where the repo stands and what remains.
+- **All data is synthetic,** and the patterns in it were planted on purpose. The point is the pipeline and its controls, not the findings.
+- **Orb's role is an assumption:** Orb as the billing engine, Stripe for collection. Its export field names are approximate.
+- **The LookML is untested** against a live Looker instance.
+- **The Snowflake account is a 30-day trial.** The DuckDB path runs anywhere.
+- **Not built:** cut to finish one story completely, and listed here as next steps:
+  - marketplace revenue (AWS and Azure)
+  - multi-currency and FX movements
+  - add-ons
+  - the product-led funnel and bring-to-work attribution
+  - a live Fivetran connector
+
+## What I'd look at first on a real team
+
+These are questions, not claims about any real company's data:
+
+1. How does ARR reporting separate repricing from expansion as legacy plans migrate over the next year?
+2. Are vacant seats, which are billed under seat pricing, tracked as an early contraction signal?
+3. How do marketplace and invoice-paid revenue reconcile with Stripe collections at close?
 
 ## Author
 
-Jacob Willson
+Jacob Willson · [LinkedIn](https://www.linkedin.com/in/jacob-j-willson) · [GitHub](https://github.com/JacobWillson13)
