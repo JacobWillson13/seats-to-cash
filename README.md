@@ -6,7 +6,6 @@
 
 The company is fictional (Wirefern, a mesh VPN), and **all data is synthetic.** The pricing mechanics are modeled on Tailscale's public pricing page as of October 2026: free personal plans, per-seat business plans with proration and auto seats, annual enterprise contracts, and the April 2026 move from per-active-user to per-seat pricing. Legacy (pre-April 2026) prices are illustrative. I'm not affiliated with Tailscale and used no Tailscale data.
 
-**Walkthrough video (4 min):** VIDEO_URL
 
 ![Streamlit in Snowflake report](docs/img/streamlit_app.png)
 
