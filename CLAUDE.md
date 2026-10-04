@@ -52,4 +52,4 @@ Features set the scope boundary, not raw tables (ADR-012). Keep every raw table 
 
 ## Workflow
 
-Work on `main`, unless the session assigns a branch; then work and push there. Read the next remaining task in PLAN and its acceptance criteria. Make one task's changes, run required checks, commit, run `git pull --rebase origin main`, then push. Never force-push. Add a STATUS update after each completion tag. Use the repository commit style `<area>: <change>`.
+Work on `main`, unless the session assigns a branch; then work and push there. Read the next remaining task in PLAN and its acceptance criteria. Make one task's changes, run required checks, commit, run `git pull --rebase origin main`, then push. Never force-push. Use the repository commit style `<area>: <change>`.

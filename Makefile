@@ -1,4 +1,4 @@
-# seats-to-cash. Targets are added as PLAN tasks land; see CLAUDE.md for the full list.
+# seats-to-cash. `make demo` runs the whole story; see README for every target.
 
 SEED ?= 42
 CLOSE_PERIODS := 2026-04 2026-05 2026-06 2026-07 2026-08 2026-09

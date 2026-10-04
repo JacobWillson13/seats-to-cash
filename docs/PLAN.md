@@ -1,6 +1,6 @@
-# Remaining work plan
+# Build plan
 
-Three tiers, in order. Finish each tier completely (tests green, everything pushed) before starting the next; whatever exists at any point must be demoable. Iterate with `config/ci.yml`; run the default config only at tags. After each tag, update `docs/STATUS.md`.
+The project was built in three tiers, each finished completely (tests green, everything pushed) before the next, so that whatever existed at any point was demoable. Tiers 1 and 2 are complete; tier 3 is complete except one item skipped by decision.
 
 ## Tier 1: the spine
 

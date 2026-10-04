@@ -58,7 +58,8 @@ generator (Python, seeded, offline)  ->  Parquet  ->  DuckDB  or  Snowflake (raw
         -> fct_account_signals -> Hightouch -> Salesforce Account
 ```
 
-![dbt lineage](docs/img/dbt_lineage.png)
+![dbt lineage: from the app and billing sources to the ARR waterfall](docs/img/dbt_lineage.png)
+<sub>dbt lineage of the ARR chain: app and Orb sources through staging and intermediate models to `fct_mrr_monthly`, ARR movements and the waterfall.</sub>
 
 **Synthetic sources in vendor shapes.** A day-by-day simulation from 2023 through September 2026 writes each system's own version of events, in the table shapes Fivetran and Orb produce: the product database, Orb billing exports, Stripe collections synced from Orb, and Salesforce. Schemas are in [docs/SCHEMAS.md](docs/SCHEMAS.md). The same seed always writes byte-identical files.
 
