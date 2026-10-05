@@ -244,7 +244,6 @@ Status: Accepted
 
 - **`ci.yml`** runs on every push to `main` and every pull request, with no secrets: lint, generator tests, the 10% dataset, the DuckDB build, close history, the dashboard queries, project tests, and `make snowflake-compile`. That compiles every model, test, and analysis for the Snowflake target with `--no-introspect`, so Snowflake-only SQL errors fail CI without an account.
 - **`snowflake.yml`** is `workflow_dispatch` only, so the owner starts it. It reads `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_PRIVATE_KEY` (the PEM body), and optionally `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` from the `snowflake` environment's secrets, and user, role, warehouse, and database from its variables, defaulting to `.env.example`. It writes the key to the runner's temp directory and deletes it afterwards. It generates the data, runs `make snowflake`, and, unless unchecked, `make close-history TARGET=snowflake FORCE=1`. One run at a time, because loads replace raw tables and closes write the ledger. Pull requests never get the secrets.
-- **Dependabot** updates the GitHub Actions weekly. Python packages stay on `uv.lock` and are upgraded by hand, because a new Faker or NumPy can change generated output (ADR-001).
 
 ## Dependency log
 

@@ -1,6 +1,11 @@
 # seats-to-cash
 
 [![ci](https://github.com/JacobWillson13/seats-to-cash/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobWillson13/seats-to-cash/actions/workflows/ci.yml)
+[![snowflake](https://github.com/JacobWillson13/seats-to-cash/actions/workflows/snowflake.yml/badge.svg)](https://github.com/JacobWillson13/seats-to-cash/actions/workflows/snowflake.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
+![dbt](https://img.shields.io/badge/dbt-1.12-FF694B?logo=dbt&logoColor=white)
+![DuckDB](https://img.shields.io/badge/DuckDB-local-FFF000?logo=duckdb&logoColor=black)
+![Snowflake](https://img.shields.io/badge/Snowflake-cloud-29B5E8?logo=snowflake&logoColor=white)
 
 **A finance data stack for a product-led SaaS company, built on dbt and Snowflake, where every number is checked against an answer key.**
 
