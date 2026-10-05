@@ -10,7 +10,7 @@ CONFIG ?= config/simulation.yml
 DBT := uv run dbt
 DBT_ARGS := --profiles-dir .
 
-.PHONY: setup seeds data test-gen test lint build fence snowflake dashboard dashboard-snowflake demo close close-history
+.PHONY: setup seeds data test-gen test lint build fence snowflake snowflake-compile dashboard dashboard-snowflake demo close close-history
 
 setup:  ## uv sync, dbt deps (once dbt_project.yml exists), pre-commit install
 	uv sync
@@ -45,6 +45,10 @@ fence:  ## only models/audit may read the answer key
 snowflake:  ## load data/ into Snowflake with write_pandas, then dbt build --target snowflake (reads .env)
 	uv run --group snowflake python scripts/snowflake_load.py
 	$(SNOWFLAKE_ENV) uv run --group snowflake dbt build --target snowflake $(DBT_ARGS)
+
+snowflake-compile:  ## compile every model, test, and analysis for Snowflake without connecting
+	$(SNOWFLAKE_ENV) uv run --group snowflake dbt compile --target snowflake \
+		--no-introspect --no-populate-cache --target-path target/snowflake --quiet $(DBT_ARGS)
 
 dashboard:  ## compile analyses/dashboard and run each query on the local DuckDB build
 	$(DBT) compile --select "path:analyses" $(DBT_ARGS)

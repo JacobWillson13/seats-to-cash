@@ -47,7 +47,8 @@ Features set the scope boundary, not raw tables (ADR-012). Keep every raw table 
 | `make close-history` | Replay April–September 2026 closes, then rebuild (`TARGET=snowflake`) | now |
 | `make dashboard` | Run `analyses/dashboard/*.sql` on DuckDB | now |
 | `make dashboard-snowflake` | Compile the dashboard SQL for Snowflake and print the file paths | now |
-| `make snowflake` | Snowflake load and dbt build, run locally by the owner | now |
+| `make snowflake-compile` | Compile the whole dbt project for Snowflake without connecting | now |
+| `make snowflake` | Snowflake load and dbt build, run locally or from the `snowflake` workflow by the owner | now |
 | `make demo` | Fresh-clone DuckDB demo | now |
 
 ## Workflow

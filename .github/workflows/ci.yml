@@ -1,4 +1,5 @@
-# Generator tests and the full dbt build on DuckDB with the 10% CI config.
+# Generator tests and the full dbt build on DuckDB with the 10% CI config, plus an offline
+# Snowflake compile. The live Snowflake build is snowflake.yml, run by hand.
 name: ci
 
 on:
@@ -26,7 +27,7 @@ jobs:
           enable-cache: true
 
       - name: Install locked dependencies
-        run: uv sync --locked
+        run: uv sync --locked --group snowflake
 
       - name: Lint
         run: make lint
@@ -48,3 +49,6 @@ jobs:
 
       - name: Project tests (truth fence, LookML, Snowflake loader, close, Streamlit app)
         run: uv run pytest tests/project
+
+      - name: Snowflake compile (no connection)
+        run: make snowflake-compile

@@ -45,6 +45,7 @@ Other commands:
 | `make close-history` | Post the April to September 2026 closes |
 | `make dashboard` | Run the report queries in `analyses/dashboard/` |
 | `make test` | Run every pytest suite |
+| `make snowflake-compile` | Compile the dbt project for Snowflake without a connection (runs in CI) |
 | `make snowflake` | Load the data into Snowflake and run the same dbt build there (see [docs/SETUP.md](docs/SETUP.md)) |
 
 ## How it works
@@ -101,7 +102,7 @@ Audit models score the marts against the key, and a CI check fails the build if 
 
 ## On their stack
 
-- **Snowflake:** the same raw data and dbt project, with key-pair service users, separate transform and read-only roles, and an X-Small warehouse ([scripts/snowflake_setup.sql](scripts/snowflake_setup.sql)).
+- **Snowflake:** the same raw data and dbt project, with key-pair service users, separate transform and read-only roles, and an X-Small warehouse ([scripts/snowflake_setup.sql](scripts/snowflake_setup.sql)). CI compiles the project for Snowflake on every push, and the owner-triggered [snowflake workflow](.github/workflows/snowflake.yml) runs the live load, build, and closes.
 
   ![Snowflake schemas](docs/img/snowflake_schemas.png)
 
