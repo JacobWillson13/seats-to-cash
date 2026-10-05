@@ -1,0 +1,78 @@
+# Live Snowflake load, dbt build, and closes (ADR-021, ADR-025, ADR-028). Owner-triggered only:
+# Actions → snowflake → Run workflow. Credentials come from the `snowflake` environment.
+name: snowflake
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Simulation seed
+        default: "42"
+        required: true
+      config:
+        description: Simulation config
+        type: choice
+        options: [config/simulation.yml, config/ci.yml]
+        default: config/simulation.yml
+      closes:
+        description: Replay the April–September 2026 closes (replaces posted periods)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# One Snowflake run at a time: loads replace raw tables and closes write the ledger.
+concurrency:
+  group: snowflake
+  cancel-in-progress: false
+
+jobs:
+  snowflake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: snowflake
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_PRIVATE_KEY_PASSPHRASE: ${{ secrets.SNOWFLAKE_PRIVATE_KEY_PASSPHRASE }}
+      SNOWFLAKE_USER: ${{ vars.SNOWFLAKE_USER || 'DBT_TRANSFORMER' }}
+      SNOWFLAKE_ROLE: ${{ vars.SNOWFLAKE_ROLE || 'TRANSFORMER' }}
+      SNOWFLAKE_WAREHOUSE: ${{ vars.SNOWFLAKE_WAREHOUSE || 'TRANSFORMING' }}
+      SNOWFLAKE_DATABASE: ${{ vars.SNOWFLAKE_DATABASE || 'SEATS_TO_CASH' }}
+      SEED: ${{ inputs.seed }}
+      CONFIG: ${{ inputs.config }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked --group snowflake
+
+      - name: Write the private key
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+        run: |
+          test -n "$SNOWFLAKE_ACCOUNT" || { echo "::error::SNOWFLAKE_ACCOUNT secret is not set"; exit 1; }
+          test -n "$SNOWFLAKE_PRIVATE_KEY" || { echo "::error::SNOWFLAKE_PRIVATE_KEY secret is not set"; exit 1; }
+          key_path="$RUNNER_TEMP/snowflake_rsa.p8"
+          umask 077
+          printf '%s\n' "$SNOWFLAKE_PRIVATE_KEY" > "$key_path"
+          echo "SNOWFLAKE_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
+      - name: Generate the data
+        run: make data SEED="$SEED" CONFIG="$CONFIG"
+
+      - name: Load raw tables and dbt build on Snowflake
+        run: make snowflake
+
+      - name: Close history on Snowflake
+        if: ${{ inputs.closes }}
+        run: make close-history TARGET=snowflake FORCE=1
+
+      - name: Remove the private key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/snowflake_rsa.p8"

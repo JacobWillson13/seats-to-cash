@@ -165,7 +165,7 @@ Status: Accepted
 
 Status: Accepted
 
-`make snowflake` is run by the owner, never by an agent session. `scripts/snowflake_load.py` reads `.env`, connects with key-pair authentication, and loads every Parquet file with `write_pandas` into the dbt target database as `RAW_<SOURCE>.<TABLE>`, with upper-case table and column names and logical types, replacing what is there. Then `dbt build --target snowflake` runs the same models and tests as DuckDB. Upper-case names let unquoted SQL resolve on both warehouses. The two keyword identifiers (Salesforce `ACCOUNT`, Orb `timestamp`) are quoted through the source config and the `quoted()` macro. Raw and modeled schemas share one database to keep grants simple. The Snowflake client is an optional dependency group, and the lock covers Linux and macOS only, because the client does not resolve for Windows.
+`make snowflake` is run by the owner, locally or from the `snowflake` workflow (ADR-028), never by an agent session. `scripts/snowflake_load.py` reads `.env`, connects with key-pair authentication, and loads every Parquet file with `write_pandas` into the dbt target database as `RAW_<SOURCE>.<TABLE>`, with upper-case table and column names and logical types, replacing what is there. Then `dbt build --target snowflake` runs the same models and tests as DuckDB. Upper-case names let unquoted SQL resolve on both warehouses. The two keyword identifiers (Salesforce `ACCOUNT`, Orb `timestamp`) are quoted through the source config and the `quoted()` macro. Raw and modeled schemas share one database to keep grants simple. The Snowflake client is an optional dependency group, and the lock covers Linux and macOS only, because the client does not resolve for Windows.
 
 ## ADR-022: Migration exposure and account signals
 
@@ -237,6 +237,14 @@ Status: Accepted
 - Every chart has hover tooltips and a table view, because three palette colors sit below 3:1 contrast.
 
 **Local check:** the queries are portable SQL, so a pytest renders the whole page with Streamlit's `AppTest` against the local DuckDB build. The DuckDB catalog is named after the file, so the same qualified names resolve there.
+
+## ADR-028: GitHub Actions
+
+Status: Accepted
+
+- **`ci.yml`** runs on every push to `main` and every pull request, with no secrets: lint, generator tests, the 10% dataset, the DuckDB build, close history, the dashboard queries, project tests, and `make snowflake-compile`. That compiles every model, test, and analysis for the Snowflake target with `--no-introspect`, so Snowflake-only SQL errors fail CI without an account.
+- **`snowflake.yml`** is `workflow_dispatch` only, so the owner starts it. It reads `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_PRIVATE_KEY` (the PEM body), and optionally `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE` from the `snowflake` environment's secrets, and user, role, warehouse, and database from its variables, defaulting to `.env.example`. It writes the key to the runner's temp directory and deletes it afterwards. It generates the data, runs `make snowflake`, and, unless unchecked, `make close-history TARGET=snowflake FORCE=1`. One run at a time, because loads replace raw tables and closes write the ledger. Pull requests never get the secrets.
+- **Dependabot** updates the GitHub Actions weekly. Python packages stay on `uv.lock` and are upgraded by hand, because a new Faker or NumPy can change generated output (ADR-001).
 
 ## Dependency log
 

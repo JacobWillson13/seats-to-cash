@@ -57,6 +57,20 @@ The committed seeds in `seeds/` are ready to use. Generation does not rebuild se
 
 Raw schemas, the close ledger, and the dbt schemas share one database (ADR-021, ADR-025). The dashboard queries in `analyses/dashboard/` are written in Snowflake syntax against the `MARTS` and `AUDIT` schemas.
 
+## Snowflake from GitHub Actions
+
+The `snowflake` workflow runs steps 1, 7, and 8 above on a GitHub runner (ADR-028). Steps 2 and 3 are still done once by hand.
+
+1. In the repository, go to **Settings → Environments → New environment**, name it `snowflake`, and optionally add yourself as a required reviewer.
+2. Add environment **secrets**:
+   - `SNOWFLAKE_ACCOUNT`: the account identifier, as in `.env`.
+   - `SNOWFLAKE_PRIVATE_KEY`: the whole contents of `seats_to_cash_rsa.p8`, header and footer lines included.
+   - `SNOWFLAKE_PRIVATE_KEY_PASSPHRASE`: only if the key is encrypted.
+3. Add environment **variables** only where they differ from the defaults: `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`.
+4. Go to **Actions → snowflake → Run workflow**, choose the seed and config, and whether to replay the closes (this replaces posted periods).
+
+Every push also runs `make snowflake-compile` in `ci.yml`, which compiles the whole project for Snowflake without credentials.
+
 ## Streamlit in Snowflake report
 
 The demo report is a one-page Streamlit in Snowflake app, `apps/streamlit_app.py` (ADR-027). Snowsight dashboards were retired: Snowflake disabled new dashboard creation on April 20, 2026, and Streamlit in Snowflake is the official replacement.

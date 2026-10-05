@@ -1,0 +1,11 @@
+# Weekly updates for the pinned GitHub Actions. Python dependencies stay on uv.lock and are
+# upgraded by hand, because a new Faker or NumPy can change generated output (ADR-001).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
