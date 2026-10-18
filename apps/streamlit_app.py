@@ -121,6 +121,19 @@ def migration_exposure() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+def largest_churn() -> pd.DataFrame:
+    # The single biggest 2026 churn, named under the waterfall so a spike explains itself.
+    return _frame(f"""
+        select m.month, m.arr_delta_usd, c.tailnet_name, c.latest_plan_code
+        from {MARTS}.FCT_ARR_MOVEMENTS as m
+        inner join {MARTS}.DIM_CUSTOMER as c on c.tailnet_id = m.tailnet_id
+        where m.movement_type = 'churn' and m.month >= '{YEAR_START}'
+        order by m.arr_delta_usd, m.month, m.tailnet_id
+        limit 1
+    """)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
 def restatements() -> pd.DataFrame:
     # analyses/dashboard/restatements.sql
     return _frame(f"""
@@ -161,8 +174,8 @@ def answer_key_checks() -> pd.DataFrame:
     """)
 
 
-def money(value: float) -> str:
-    sign = "−" if value < 0 else ""
+def money(value: float, signed: bool = False) -> str:
+    sign = "−" if value < 0 else ("+" if signed and value > 0 else "")
     value = abs(value)
     if value >= 1_000_000:
         return f"{sign}${value / 1_000_000:,.2f}M"
@@ -237,7 +250,7 @@ k3.metric(
 )
 k4.metric(
     "Projected migration ARR change",
-    money(float(exposure["arr_delta_usd"].sum())),
+    money(float(exposure["arr_delta_usd"].sum()), signed=True),
     help="Every legacy v3 tailnet moved to the matching v4 seat plan at today's usage.",
 )
 k5.metric("Defects handled", f"{handled} of {len(scorecard)}")
@@ -293,6 +306,15 @@ with c2:
         )
     )
     st.altair_chart(themed(bars), use_container_width=True)
+    churned = largest_churn()
+    if not churned.empty:
+        top = churned.iloc[0]
+        kind = "an enterprise contract" if top["latest_plan_code"] == "enterprise" else "a customer"
+        st.caption(
+            f"Largest single churn in 2026: {top['tailnet_name']}, {kind}, "
+            f"{money(float(top['arr_delta_usd']))} ARR in "
+            f"{pd.to_datetime(top['month']).strftime('%b %Y')}."
+        )
     table(year)
 
 # 4. Billings, revenue, cash, and deferred revenue ---------------------------------------------
