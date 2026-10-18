@@ -306,6 +306,7 @@ with c2:
         )
     )
     st.altair_chart(themed(bars), use_container_width=True)
+    table(year)
     churned = largest_churn()
     if not churned.empty:
         top = churned.iloc[0]
@@ -315,7 +316,6 @@ with c2:
             f"{money(float(top['arr_delta_usd']))} ARR in "
             f"{pd.to_datetime(top['month']).strftime('%b %Y')}."
         )
-    table(year)
 
 # 4. Billings, revenue, cash, and deferred revenue ---------------------------------------------
 st.subheader("Billings, revenue, and cash")
